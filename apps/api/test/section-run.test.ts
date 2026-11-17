@@ -174,10 +174,8 @@ describe('writing a whole topic over HTTP', () => {
 		const run = await cardsFor(api, cookie);
 		const card = run.cards[0];
 
-		expect(await grade(api, cookie, card.id, allVerdicts(FIELD_KEYS))).toHaveProperty(
-			'status',
-			200
-		);
+		const saved = await grade(api, cookie, card.id, allVerdicts(FIELD_KEYS));
+		expect(saved.status).toBe(200);
 
 		api.db
 			.update(topicFields)
@@ -203,7 +201,8 @@ describe('writing a whole topic over HTTP', () => {
 		const api = createTestApi();
 		const cookie = await cookieFor(api, 8006);
 
-		expect(await grade(api, cookie, 99_999, { what: 'learned' })).toHaveProperty('status', 404);
+		const unknown = await grade(api, cookie, 99_999, { what: 'learned' });
+		expect(unknown.status).toBe(404);
 
 		const empty = api.db
 			.insert(topics)

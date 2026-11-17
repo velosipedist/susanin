@@ -2,10 +2,10 @@ import { eq } from 'drizzle-orm';
 import {
 	buildSectionRun,
 	gradeableFields,
+	isFieldKey,
 	isSide,
 	verdictsMatchCard,
 	type CardFieldInput,
-	type FieldKey,
 	type SectionRun,
 	type TopicInput,
 	type Verdicts
@@ -21,6 +21,23 @@ type TopicAccumulator = {
 	side: TopicInput['side'];
 	fields: CardFieldInput[];
 };
+
+type TopicFieldRow = {
+	key: string | null;
+	text: string | null;
+	notApplicable: boolean | null;
+};
+
+/** Maps a joined topic-field row to a card field, or null when the join found none. */
+function toCardFieldInput(row: TopicFieldRow): CardFieldInput | null {
+	if (!isFieldKey(row.key)) return null;
+
+	return {
+		key: row.key,
+		text: row.text ?? '',
+		notApplicable: row.notApplicable ?? false
+	};
+}
 
 /** Reads one section's route and drops every topic that has no gradeable field. */
 export function loadSectionRun(
@@ -64,13 +81,8 @@ export function loadSectionRun(
 			byTopic.set(row.topicId, topic);
 		}
 
-		if (row.key !== null) {
-			topic.fields.push({
-				key: row.key as FieldKey,
-				text: row.text ?? '',
-				notApplicable: row.notApplicable ?? false
-			});
-		}
+		const field = toCardFieldInput(row);
+		if (field) topic.fields.push(field);
 	}
 
 	return buildSectionRun(section, [...byTopic.values()]);
@@ -113,11 +125,9 @@ export function gradeTopic(
 		.all();
 
 	const fields = gradeableFields(
-		fieldRows.map((field) => ({
-			key: field.key as FieldKey,
-			text: field.text,
-			notApplicable: field.notApplicable
-		}))
+		fieldRows
+			.map(toCardFieldInput)
+			.filter((field): field is CardFieldInput => field !== null)
 	);
 
 	if (fields.length === 0) return { status: 'no-fields' };

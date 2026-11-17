@@ -20,6 +20,10 @@ export const FIELD_KEYS = ['what', 'when', 'where', 'why', 'who', 'how'] as cons
 
 export type FieldKey = (typeof FIELD_KEYS)[number];
 
+export function isFieldKey(value: unknown): value is FieldKey {
+	return typeof value === 'string' && (FIELD_KEYS as readonly string[]).includes(value);
+}
+
 /** Which part of the coach a topic belongs to; null when the syllabus is silent. */
 export const SIDES = ['left', 'supplementary', 'right'] as const;
 
@@ -30,10 +34,12 @@ export function isSide(value: unknown): value is Side {
 }
 
 /** A graded verdict. Absence of a row means Untouched. */
-export type FieldStateValue = 'learned' | 'unlearned';
+export const FIELD_STATE_VALUES = ['learned', 'unlearned'] as const;
+
+export type FieldStateValue = (typeof FIELD_STATE_VALUES)[number];
 
 export function isFieldStateValue(value: unknown): value is FieldStateValue {
-	return value === 'learned' || value === 'unlearned';
+	return typeof value === 'string' && (FIELD_STATE_VALUES as readonly string[]).includes(value);
 }
 
 /** Verdicts for one visit to one topic card, keyed by field. */
@@ -81,11 +87,14 @@ export type SectionRun = {
  * How order. Empty and marked-not-applicable fields are never gradeable.
  */
 export function gradeableFields(fields: readonly CardFieldInput[]): CardField[] {
-	return FIELD_KEYS.flatMap((key) => {
+	const gradeable: CardField[] = [];
+	for (const key of FIELD_KEYS) {
 		const field = fields.find((candidate) => candidate.key === key);
-		if (!field || field.notApplicable || field.text.trim() === '') return [];
-		return [{ key, text: field.text }];
-	});
+		if (field && !field.notApplicable && field.text.trim() !== '') {
+			gradeable.push({ key, text: field.text });
+		}
+	}
+	return gradeable;
 }
 
 /** Orders topics by route position and drops any with no gradeable fields. */
@@ -94,19 +103,20 @@ export function buildSectionRun(
 	topics: readonly TopicInput[]
 ): SectionRun {
 	const ordered = [...topics].sort((left, right) => left.position - right.position);
-	const cards = ordered.flatMap((topic) => {
+	const cards: TopicCard[] = [];
+
+	for (const topic of ordered) {
 		const fields = gradeableFields(topic.fields);
-		if (fields.length === 0) return [];
-		return [
-			{
-				id: topic.id,
-				position: topic.position,
-				name: topic.name,
-				side: topic.side,
-				fields
-			}
-		];
-	});
+		if (fields.length === 0) continue;
+
+		cards.push({
+			id: topic.id,
+			position: topic.position,
+			name: topic.name,
+			side: topic.side,
+			fields
+		});
+	}
 
 	return { section, topicCount: ordered.length, cards };
 }
@@ -127,14 +137,9 @@ export function leaveAction(fields: readonly CardField[], verdicts: Verdicts): L
 /** True only when every gradeable field carries a verdict and no others do. */
 export function verdictsMatchCard(fields: readonly CardField[], verdicts: Verdicts): boolean {
 	if (fields.length === 0) return false;
+	if (Object.keys(verdicts).length !== fields.length) return false;
 
-	const allowed = new Set<FieldKey>(fields.map((field) => field.key));
-	const keys = Object.keys(verdicts);
-	if (keys.length !== fields.length) return false;
-
-	return keys.every(
-		(key) => allowed.has(key as FieldKey) && isFieldStateValue(verdicts[key as FieldKey])
-	);
+	return fields.every((field) => isFieldStateValue(verdicts[field.key]));
 }
 
 /** One section's progress for one account. */

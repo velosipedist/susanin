@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import {
+		isFieldStateValue,
 		leaveAction,
 		type FieldKey,
 		type FieldStateValue,
@@ -18,7 +19,7 @@
 	import { overallStats, sectionStats } from '#lib/home';
 	import { telegramWebApp } from '#lib/telegram';
 
-	type LeaveAction = 'next' | 'back' | 'exit';
+	type NavAction = 'next' | 'back' | 'exit';
 
 	let result = $state<HomeResult | null>(null);
 	let note = $state('');
@@ -30,7 +31,7 @@
 	let verdicts = $state<Verdicts>({});
 	let revealed = $state<FieldKey | null>(null);
 	let saving = $state(false);
-	let pendingAction = $state<LeaveAction | null>(null);
+	let pendingAction = $state<NavAction | null>(null);
 
 	onMount(async () => {
 		const telegram = telegramWebApp();
@@ -60,7 +61,7 @@
 		cardCount === 0 ? 0 : Math.round(((cardIndex + 1) / cardCount) * 100)
 	);
 	const gradedCount = $derived(
-		cardFields.filter((field) => isVerdict(verdicts[field.key])).length
+		cardFields.filter((field) => isFieldStateValue(verdicts[field.key])).length
 	);
 
 	function statusMessage(current: HomeResult | null): string {
@@ -77,10 +78,6 @@
 			case 'unavailable':
 				return 'Susanin is unavailable right now. Try again in a moment.';
 		}
-	}
-
-	function isVerdict(value: FieldStateValue | undefined): boolean {
-		return value === 'learned' || value === 'unlearned';
 	}
 
 	function preview(label: string) {
@@ -104,12 +101,17 @@
 			return;
 		}
 
-		runError =
-			loaded.status === 'empty'
-				? 'That section has no authored content to train yet.'
-				: loaded.status === 'signed-out'
-					? 'Your session has ended. Open Susanin from the bot again.'
-					: 'That section could not be loaded. Try again in a moment.';
+		switch (loaded.status) {
+			case 'empty':
+				runError = 'That section has no authored content to train yet.';
+				break;
+			case 'signed-out':
+				runError = 'Your session has ended. Open Susanin from the bot again.';
+				break;
+			case 'unavailable':
+				runError = 'That section could not be loaded. Try again in a moment.';
+				break;
+		}
 	}
 
 	function resetCard() {
@@ -122,10 +124,10 @@
 	function grade(key: FieldKey, value: FieldStateValue) {
 		verdicts = { ...verdicts, [key]: value };
 
-		if (value === 'learned') {
-			if (revealed === key) revealed = null;
-		} else {
+		if (value === 'unlearned') {
 			revealed = key;
+		} else if (revealed === key) {
+			revealed = null;
 		}
 	}
 
@@ -133,7 +135,7 @@
 		revealed = revealed === key ? null : key;
 	}
 
-	async function requestLeave(action: LeaveAction) {
+	async function requestLeave(action: NavAction) {
 		if (!card || saving) return;
 
 		const rule = leaveAction(card.fields, verdicts);
@@ -158,11 +160,13 @@
 		const outcome = await saveTopicProgress(topicId, verdicts);
 		saving = false;
 
-		if (outcome !== 'ok') {
-			runError =
-				outcome === 'rejected'
-					? 'That card was not complete. Grade every fact and try again.'
-					: 'Progress could not be saved. Try again in a moment.';
+		if (outcome === 'rejected') {
+			runError = 'That card was not complete. Grade every fact and try again.';
+			return false;
+		}
+
+		if (outcome === 'unavailable') {
+			runError = 'Progress could not be saved. Try again in a moment.';
 			return false;
 		}
 
@@ -170,7 +174,7 @@
 		return true;
 	}
 
-	function performLeave(action: LeaveAction) {
+	function performLeave(action: NavAction) {
 		pendingAction = null;
 
 		if (action === 'exit') {

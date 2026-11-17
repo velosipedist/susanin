@@ -2,7 +2,7 @@ import { eq } from 'drizzle-orm';
 import { Hono, type Context } from 'hono';
 import { getCookie, setCookie } from 'hono/cookie';
 import { z } from 'zod';
-import { GROUPS, isGroup } from '@susanin/shared';
+import { FIELD_STATE_VALUES, GROUPS, isGroup } from '@susanin/shared';
 import { InitDataError, validateInitData, type TelegramInitUser } from './auth/init-data';
 import { SESSION_COOKIE, createSessionToken, readSessionToken } from './auth/session';
 import type { ApiConfig } from './config';
@@ -36,7 +36,7 @@ const groupSchema = z.object({ telegramId: z.number().int().positive(), group: z
 const authSchema = z.object({ initData: z.string() });
 
 const verdictsSchema = z.object({
-	verdicts: z.record(z.string(), z.enum(['learned', 'unlearned']))
+	verdicts: z.record(z.string(), z.enum(FIELD_STATE_VALUES))
 });
 
 export function createApp({ db, config }: ApiContext): Hono {

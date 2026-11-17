@@ -30,12 +30,7 @@ export async function loadLearnerHome(): Promise<HomeResult> {
 
 /** Reads the home again over the existing session cookie, without re-authenticating. */
 export async function loadHomeForSession(): Promise<HomeResult> {
-	let response: Response;
-	try {
-		response = await fetch('/api/home', { credentials: 'same-origin' });
-	} catch {
-		return { status: 'unavailable' };
-	}
+	const response = await request('/api/home');
 
 	if (!response.ok) {
 		return {
@@ -48,26 +43,18 @@ export async function loadHomeForSession(): Promise<HomeResult> {
 
 export type SectionRunResult =
 	| { status: 'ready'; run: SectionRun }
-	| { status: 'empty'; run: SectionRun }
-	| { status: 'signed-out' | 'unavailable' };
+	| { status: 'empty' | 'signed-out' | 'unavailable' };
 
 /** Loads one section's cards in route order; topics without gradeable fields are absent. */
 export async function loadSectionRun(sectionNumber: number): Promise<SectionRunResult> {
-	let response: Response;
-	try {
-		response = await fetch(`/api/sections/${sectionNumber}/cards`, {
-			credentials: 'same-origin'
-		});
-	} catch {
-		return { status: 'unavailable' };
-	}
+	const response = await request(`/api/sections/${sectionNumber}/cards`);
 
 	if (!response.ok) {
 		return { status: response.status === 401 ? 'signed-out' : 'unavailable' };
 	}
 
 	const run = (await response.json()) as SectionRun;
-	return run.cards.length === 0 ? { status: 'empty', run } : { status: 'ready', run };
+	return run.cards.length === 0 ? { status: 'empty' } : { status: 'ready', run };
 }
 
 export type SaveProgressResult = 'ok' | 'rejected' | 'unavailable';
@@ -77,32 +64,30 @@ export async function saveTopicProgress(
 	topicId: number,
 	verdicts: Verdicts
 ): Promise<SaveProgressResult> {
-	try {
-		const response = await fetch(`/api/topics/${topicId}/progress`, {
-			method: 'POST',
-			headers: { 'content-type': 'application/json' },
-			body: JSON.stringify({ verdicts }),
-			credentials: 'same-origin'
-		});
+	const response = await request(`/api/topics/${topicId}/progress`, {
+		method: 'POST',
+		headers: { 'content-type': 'application/json' },
+		body: JSON.stringify({ verdicts })
+	});
 
-		if (response.ok) return 'ok';
-		return response.status === 400 ? 'rejected' : 'unavailable';
+	if (response.ok) return 'ok';
+	return response.status === 400 ? 'rejected' : 'unavailable';
+}
+
+async function request(path: string, init: RequestInit = {}): Promise<Response> {
+	try {
+		return await fetch(path, { credentials: 'same-origin', ...init });
 	} catch {
-		return 'unavailable';
+		return new Response(null, { status: 503 });
 	}
 }
 
 async function post(path: string, body: unknown): Promise<Response> {
-	try {
-		return await fetch(path, {
-			method: 'POST',
-			headers: { 'content-type': 'application/json' },
-			body: JSON.stringify(body),
-			credentials: 'same-origin'
-		});
-	} catch {
-		return new Response(null, { status: 503 });
-	}
+	return request(path, {
+		method: 'POST',
+		headers: { 'content-type': 'application/json' },
+		body: JSON.stringify(body)
+	});
 }
 
 async function authFailure(
