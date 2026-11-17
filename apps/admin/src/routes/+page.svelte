@@ -11,7 +11,9 @@
 		type AdminPerson,
 		type AdminProgressConflict,
 		type AdminSectionDraft,
+		type AdminSectionDraftBody,
 		type AdminSectionReview,
+		type AdminSectionSaveBody,
 		type AdminSectionSaveResponse,
 		type AdminSectionStatus,
 		type AdminSessionResponse
@@ -130,7 +132,7 @@
 		});
 	}
 
-	function draftBody(draft: AdminSectionDraft) {
+	function draftBody(draft: AdminSectionDraft): AdminSectionDraftBody {
 		return { name: draft.section.name, topics: draft.topics };
 	}
 
@@ -156,6 +158,7 @@
 		editor = null;
 	}
 
+	/** Drops the review panel and any pending Keep/Reset choice. */
 	function dismissReview(): void {
 		if (!editor) return;
 		editor.review = null;
@@ -165,8 +168,7 @@
 	/** Any edit after a review makes that review stale, so it is dropped. */
 	function invalidateReview(): void {
 		if (!editor || (!editor.review && !editor.conflict)) return;
-		editor.review = null;
-		editor.conflict = null;
+		dismissReview();
 		editor.error = '';
 	}
 
@@ -216,13 +218,13 @@
 		if (!state || state.busy) return;
 
 		const sectionNumber = state.draft.section.number;
+		const body: AdminSectionSaveBody = draftBody(state.draft);
+		if (resetProgress !== undefined) body.resetProgress = resetProgress;
+
 		state.busy = true;
 		state.error = '';
 
-		const response = await putApi(`/api/admin/sections/${sectionNumber}`, {
-			...draftBody(state.draft),
-			...(resetProgress === undefined ? {} : { resetProgress })
-		});
+		const response = await putApi(`/api/admin/sections/${sectionNumber}`, body);
 		state.busy = false;
 
 		if (!response) {
@@ -254,12 +256,10 @@
 		await refreshDashboard();
 	}
 
-	/** The names of the changed topics whose verdicts a Reset would clear. */
-	function conflictedTopics(state: EditorState): string[] {
-		const conflict = state.conflict;
-		if (!conflict) return [];
-		const ids = new Set(conflict.affectedTopicIds);
-		return conflict.review.topics
+	/** The changed topic names whose verdicts a Reset would clear. */
+	function affectedTopicNames(review: AdminSectionReview): string[] {
+		const ids = new Set(review.affectedTopicIds);
+		return review.topics
 			.filter((topic) => ids.has(topic.id))
 			.map((topic) => topic.previousName);
 	}
@@ -505,6 +505,8 @@
 				</div>
 
 				{#if editor.review}
+					{@const affectedLearners = editor.review.affectedLearners}
+					{@const learnersHave = affectedLearners === 1 ? 'learner has' : 'learners have'}
 					<section class="review-panel" aria-labelledby="review-heading">
 						<h3 id="review-heading">Review before saving</h3>
 
@@ -563,22 +565,21 @@
 						{/if}
 
 						{#if editor.conflict}
-							{@const affected = conflictedTopics(editor)}
+							{@const affected = affectedTopicNames(editor.conflict.review)}
+							{@const gradedTopics = affected.length === 1 ? 'this topic' : 'these topics'}
 							<section class="choice-panel" aria-labelledby="choice-heading">
 								<h4 id="choice-heading">Keep or reset progress?</h4>
 								<p>
-									{editor.conflict.affectedLearners}
-									{editor.conflict.affectedLearners === 1
-										? 'learner has'
-										: 'learners have'}
-									graded {affected.length === 1 ? 'this topic' : 'these topics'}:
+									{affectedLearners}
+									{learnersHave}
+									graded {gradedTopics}:
 									<strong>{affected.join(', ')}</strong>.
 								</p>
 								<p class="muted">
 									Nothing has been written yet. <strong>Keep</strong> preserves every verdict,
 									which will then certify the corrected text. <strong>Reset</strong> returns
-									every field of {affected.length === 1 ? 'this topic' : 'these topics'} to
-									Untouched for every learner, so they must be learned again.
+									every field of {gradedTopics} to Untouched for every learner, so they must be
+									learned again.
 								</p>
 								<div class="editor-actions">
 									<button
@@ -605,8 +606,8 @@
 						{:else}
 							{#if editor.review.affectedTopicIds.length > 0}
 								<p class="notice">
-									{editor.review.affectedLearners}
-									{editor.review.affectedLearners === 1 ? 'learner has' : 'learners have'}
+									{affectedLearners}
+									{learnersHave}
 									graded the affected topics. Saving will ask whether to keep or reset their
 									progress before anything is written.
 								</p>

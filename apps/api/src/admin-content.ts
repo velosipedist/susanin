@@ -313,12 +313,8 @@ export function saveSectionDraft(
 		return { status: 'progress-affected', review };
 	}
 
-	writeSectionDraft(
-		db,
-		sectionNumber,
-		draft,
-		draft.resetProgress ? review.affectedTopicIds : []
-	);
+	const resetTopicIds = draft.resetProgress === true ? review.affectedTopicIds : [];
+	writeSectionDraft(db, sectionNumber, draft, resetTopicIds);
 	const saved = loadSectionDraft(db, sectionNumber);
 	if (!saved) return { status: 'not-found' };
 
