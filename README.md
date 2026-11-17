@@ -198,6 +198,39 @@ with committed migrations in `apps/api/drizzle/`:
 Progress counts only authored fields that are not marked not applicable.
 Learned, Unlearned and Untouched are counted; percentages are derived.
 
+## Importing the Brief and Syllabus
+
+The one-time importer turns extracted text into sections, topics and sides. The
+copyrighted PDFs stay out of the repository: extract them locally to
+`_local/brief.txt` and `_local/syllabus.txt`, then run:
+
+```sh
+pnpm --filter @susanin/api import:content
+# or with explicit paths and database:
+pnpm --filter @susanin/api import:content \
+  --brief _local/brief.txt --syllabus _local/syllabus.txt --db ./data/susanin.db
+```
+
+The extracted text must keep one heading per line:
+
+- A Brief section starts with `Section NN – Title`. Every isolated heading line
+  below it is a topic in document order; prose lines stay ignored.
+- `Introduction`, `Background`, `Appendix` and the other back-matter headings
+  end the content, so nothing after them becomes a topic.
+- A Syllabus section uses the same heading. Each following row keeps the three
+  columns, separated by tabs or pipes, in left / supplementary / right order.
+  An `item | side` row is also accepted.
+- Names are compared after case, punctuation, diacritics and simple plural forms
+  are normalised. Only an exact-after-normalisation match receives a side; near
+  matches are reported as ambiguous and never applied.
+- Syllabus-only items are appended to the end of their section with all six
+  fields marked not applicable. Brief topics start with six empty fields.
+- The importer refuses to run when any field state exists. `--reset` deletes the
+  content and every learner verdict first; group assignments survive.
+
+The printed review report lists matched, unmatched, appended and ambiguous
+items, so every gap can be fixed by hand in the admin editor.
+
 ## Tests
 
 ```sh
@@ -209,7 +242,10 @@ database per test. They cover onboarding over HTTP, the invite-code failure
 limit, persistent membership, `initData` validation, session rejection, the
 group-required rule, the home payload, the full 25-section list, single-section
 cards, atomic whole-topic writes, multi-section run construction for Learn new and
-Repeat gaps, the admin OIDC round trip, dashboard counts and non-admin rejection.
+Repeat gaps, the admin OIDC round trip, dashboard counts and non-admin rejection,
+and the importer against short committed text fixtures (section and topic order,
+side matching, appended Syllabus-only topics, and the refusal to overwrite
+existing progress).
 The OIDC unit tests verify a signed `id_token` against a local test JWKS and
 reject a wrong issuer, wrong audience, expiry and a bad signature. They assert
 observable behaviour, not private helpers or SQL shapes.
@@ -236,5 +272,6 @@ observable behaviour, not private helpers or SQL shapes.
 | `pnpm build:admin` | Build only the admin app |
 | `pnpm preview` | Preview the static build |
 | `pnpm bot` | Run the Telegram bot (loads the root `.env`) |
+| `pnpm --filter @susanin/api import:content` | Build content from extracted Brief/Syllabus text |
 | `pnpm typecheck` | Type-check every workspace package |
 | `pnpm test` | Run the API test suite |
