@@ -8,6 +8,7 @@
 		"start": "node --env-file-if-exists=../../.env --import tsx src/server.ts",
 		"typecheck": "tsc --noEmit",
 		"test": "vitest run",
+		"import:content": "node --env-file-if-exists=../../.env --import tsx src/import/cli.ts",
 		"db:generate": "drizzle-kit generate"
 	},
 	"dependencies": {

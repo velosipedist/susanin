@@ -20,9 +20,9 @@ list and the admin app arrive in later tickets.
   (one line; half size above 15 characters), overall percentage, **Learn new**,
   **Repeat gaps**, the five in-scope stops with bars and percentages, and the
   pinned **All 25 sections** footer.
-- Content is seeded placeholder data with an A–E section mapping until the
-  Brief/Syllabus importer (issue #8) and the admin app exist. Every field text is
-  explicitly a placeholder; no source material is copied.
+- Content is seeded placeholder data with an A–E section mapping until the admin
+  app exists or the importer replaces it. Every seeded field text is explicitly a
+  placeholder; no source material is copied.
 
 ## Architecture
 
@@ -146,6 +146,39 @@ with committed migrations in `apps/api/drizzle/`:
 Progress counts only authored fields that are not marked not applicable.
 Learned, Unlearned and Untouched are counted; percentages are derived.
 
+## Importing the Brief and Syllabus
+
+The one-time importer turns extracted text into sections, topics and sides. The
+copyrighted PDFs stay out of the repository: extract them locally to
+`_local/brief.txt` and `_local/syllabus.txt`, then run:
+
+```sh
+pnpm --filter @susanin/api import:content
+# or with explicit paths and database:
+pnpm --filter @susanin/api import:content \
+  --brief _local/brief.txt --syllabus _local/syllabus.txt --db ./data/susanin.db
+```
+
+The extracted text must keep one heading per line:
+
+- A Brief section starts with `Section NN – Title`. Every isolated heading line
+  below it is a topic in document order; prose lines stay ignored.
+- `Introduction`, `Background`, `Appendix` and the other back-matter headings
+  end the content, so nothing after them becomes a topic.
+- A Syllabus section uses the same heading. Each following row keeps the three
+  columns, separated by tabs or pipes, in left / supplementary / right order.
+  An `item | side` row is also accepted.
+- Names are compared after case, punctuation, diacritics and simple plural forms
+  are normalised. Only an exact-after-normalisation match receives a side; near
+  matches are reported as ambiguous and never applied.
+- Syllabus-only items are appended to the end of their section with all six
+  fields marked not applicable. Brief topics start with six empty fields.
+- The importer refuses to run when any field state exists. `--reset` deletes the
+  content and every learner verdict first; group assignments survive.
+
+The printed review report lists matched, unmatched, appended and ambiguous
+items, so every gap can be fixed by hand in the admin editor.
+
 ## Tests
 
 ```sh
@@ -155,8 +188,10 @@ pnpm test
 The API tests boot the Hono app in-process against a fresh in-memory SQLite
 database per test. They cover onboarding over HTTP, the invite-code failure
 limit, persistent membership, `initData` validation, session rejection, the
-group-required rule and the home payload. They assert observable behaviour, not
-private helpers or SQL shapes.
+group-required rule and the home payload. The importer is tested against short
+committed text fixtures: section and topic order, side matching, appended
+Syllabus-only topics and the refusal to overwrite existing progress. Tests
+assert observable behaviour, not private helpers or SQL shapes.
 
 ## Deliberately fake in this build
 
@@ -165,8 +200,8 @@ private helpers or SQL shapes.
 - **Learn new**, **Repeat gaps**, and **All 25 sections** show an inline note
   saying they arrive in the next build. Runs start in issues #4 and #5; the full
   list is issue #6.
-- The admin app, group assignment and the importer are later tickets. `ADMIN_IDS`
-  is parsed into the account's admin flag, but no admin routes exist yet.
+- The admin app and group assignment are later tickets. `ADMIN_IDS` is parsed
+  into the account's admin flag, but no admin routes exist yet.
 - There is no deployment in this build.
 
 ## Scripts
@@ -178,5 +213,6 @@ private helpers or SQL shapes.
 | `pnpm build` | Static build (adapter-static, set up for `/learn`) |
 | `pnpm preview` | Preview the static build |
 | `pnpm bot` | Run the Telegram bot (loads the root `.env`) |
+| `pnpm --filter @susanin/api import:content` | Build content from extracted Brief/Syllabus text |
 | `pnpm typecheck` | Type-check every workspace package |
 | `pnpm test` | Run the API test suite |
