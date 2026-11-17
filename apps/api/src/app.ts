@@ -12,6 +12,13 @@ import {
 	moveAccountGroup,
 	setAccountAdmin
 } from './admin';
+import {
+	draftMatchesStoredTopics,
+	loadSectionDraft,
+	reviewSectionDraft,
+	saveSectionDraft,
+	sectionDraftBodySchema
+} from './admin-content';
 import { InitDataError, validateInitData, type TelegramInitUser } from './auth/init-data';
 import {
 	createOidcState,
@@ -306,6 +313,85 @@ export function createApp({ db, config, oidc: providedOidc }: ApiContext): Hono 
 		if (denied) return denied;
 
 		return c.json(loadDashboard(db));
+	});
+
+	app.get('/api/admin/sections/:number', (c) => {
+		const denied = requireAdmin(c, db, config);
+		if (denied) return denied;
+
+		const sectionNumber = routeId(c.req.param('number'));
+		if (sectionNumber === undefined) {
+			return c.json({ error: 'section-not-found' }, 404);
+		}
+
+		const draft = loadSectionDraft(db, sectionNumber);
+		if (!draft) {
+			return c.json({ error: 'section-not-found' }, 404);
+		}
+
+		return c.json(draft);
+	});
+
+	app.post('/api/admin/sections/:number/review', async (c) => {
+		const denied = requireAdmin(c, db, config);
+		if (denied) return denied;
+
+		const sectionNumber = routeId(c.req.param('number'));
+		if (sectionNumber === undefined) {
+			return c.json({ error: 'section-not-found' }, 404);
+		}
+
+		const parsed = sectionDraftBodySchema.safeParse(await readJson(c.req.raw));
+		if (!parsed.success) {
+			return c.json({ error: 'invalid-draft' }, 400);
+		}
+
+		const stored = loadSectionDraft(db, sectionNumber);
+		if (!stored) {
+			return c.json({ error: 'section-not-found' }, 404);
+		}
+
+		if (!draftMatchesStoredTopics(stored, parsed.data)) {
+			return c.json({ error: 'invalid-topics' }, 400);
+		}
+
+		return c.json(reviewSectionDraft(db, stored, parsed.data));
+	});
+
+	app.put('/api/admin/sections/:number', async (c) => {
+		const denied = requireAdmin(c, db, config);
+		if (denied) return denied;
+
+		const sectionNumber = routeId(c.req.param('number'));
+		if (sectionNumber === undefined) {
+			return c.json({ error: 'section-not-found' }, 404);
+		}
+
+		const parsed = sectionDraftBodySchema.safeParse(await readJson(c.req.raw));
+		if (!parsed.success) {
+			return c.json({ error: 'invalid-draft' }, 400);
+		}
+
+		const result = saveSectionDraft(db, sectionNumber, parsed.data);
+
+		switch (result.status) {
+			case 'ok':
+				return c.json({ ok: true, draft: result.draft });
+			case 'not-found':
+				return c.json({ error: 'section-not-found' }, 404);
+			case 'invalid-topics':
+				return c.json({ error: 'invalid-topics' }, 400);
+			case 'progress-affected':
+				return c.json(
+					{
+						error: 'progress-affected',
+						affectedTopicIds: result.review.affectedTopicIds,
+						affectedLearners: result.review.affectedLearners,
+						review: result.review
+					},
+					409
+				);
+		}
 	});
 
 	app.get('/api/admin/cohort', (c) => {

@@ -330,3 +330,71 @@ export type AdminPerson = {
 export type AdminPeopleResponse = {
 	people: AdminPerson[];
 };
+
+/** One field in the section editor, always one of the six canonical keys. */
+export type AdminDraftField = CardFieldInput;
+
+/** One topic in a section's full draft; array order is the route order. */
+export type AdminDraftTopic = {
+	id: number;
+	name: string;
+	side: Side | null;
+	fields: AdminDraftField[];
+};
+
+/** The editor's load response: one section with its ordered topics and six fields each. */
+export type AdminSectionDraft = {
+	section: { number: number; name: string };
+	topics: AdminDraftTopic[];
+};
+
+/** The body the editor sends; the section number lives in the URL. */
+export type AdminSectionDraftBody = {
+	name: string;
+	topics: AdminDraftTopic[];
+};
+
+/** One field whose stored text or not-applicable flag differs from the draft. */
+export type AdminFieldDiff = {
+	key: FieldKey;
+	previousText: string;
+	text: string;
+	previousNotApplicable: boolean;
+	notApplicable: boolean;
+};
+
+/** One topic whose name, field text or not-applicable flag changed. */
+export type AdminTopicDiff = {
+	id: number;
+	previousName: string;
+	name: string;
+	fields: AdminFieldDiff[];
+};
+
+/** The content diff; order, side and section-name edits are reported but are not content changes. */
+export type AdminSectionDiff = {
+	section: { number: number; previousName: string; name: string };
+	topics: AdminTopicDiff[];
+	reordered: boolean;
+	sideChanges: Array<{ id: number; previousSide: Side | null; side: Side | null }>;
+};
+
+/** A save preview: the diff plus the progress it would affect if written. */
+export type AdminSectionReview = AdminSectionDiff & {
+	affectedTopicIds: number[];
+	affectedLearners: number;
+};
+
+/** A refused save. Nothing has been written when this body is returned. */
+export type AdminProgressConflict = {
+	error: 'progress-affected';
+	affectedTopicIds: number[];
+	affectedLearners: number;
+	review: AdminSectionReview;
+};
+
+/** A written save, returning the stored draft so the editor can stay open. */
+export type AdminSectionSaveResponse = {
+	ok: true;
+	draft: AdminSectionDraft;
+};

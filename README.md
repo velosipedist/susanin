@@ -3,12 +3,13 @@
 Susanin drills the facts of a fixed Hong Kong Island coach tour. The repository
 now holds the **foundation** (issue #3), the **single-section run** (issue #4), the
 **multi-section runs** (issue #5), the **full section list** (issue #6), the
-**admin app** (issue #7) and the **cohort map and people list** (issue #9): a real
-API over SQLite, Telegram onboarding that remembers accounts, a signed session
-cookie for the Mini App, the B-layout learner home reading from the database,
-topic cards that write a complete card atomically, and a no-pagination admin
-dashboard behind Telegram OIDC sign-in. Content editing and the save-time
-Keep/Reset choice arrive in later tickets.
+**admin app** (issue #7), the **importer** (issue #8), the **cohort map and people
+list** (issue #9) and the **section and topic editor** (issue #10): a real API over
+SQLite, Telegram onboarding that remembers accounts, a signed session cookie for
+the Mini App, the B-layout learner home reading from the database, topic cards that
+write a complete card atomically, a no-pagination admin dashboard behind Telegram
+OIDC sign-in, and section editing with a review step and a progress-safe 409. The
+save-time Keep/Reset choice arrives in a later ticket.
 
 ## What works
 
@@ -39,9 +40,10 @@ Keep/Reset choice arrive in later tickets.
   Every row shows its number, name, progress bar and counts, marks whether it is
   in the learner's group, and starts the same single-section run when tapped. A
   section with no authored content says so and cannot be trained.
-- Content is seeded placeholder data with an A–E section mapping until the
-  Brief/Syllabus importer (issue #8) and content editing exist. Every field text
-  is explicitly a placeholder; no source material is copied.
+- Content in a fresh database is seeded placeholder data with an A–E section
+  mapping; the Brief/Syllabus importer can replace it, and admins correct it in
+  the editor. Every seeded field text is explicitly a placeholder; no source
+  material is copied.
 - The admin shell at `/admin/` is public and exposes no data until sign-in. A
   Telegram OIDC login with PKCE verifies the `id_token` against Telegram's JWKS
   and sets the same signed session cookie as the Mini App.
@@ -50,6 +52,14 @@ Keep/Reset choice arrive in later tickets.
 - The dashboard lists all 25 sections in one table with topic count, authored /
   not-applicable / empty field counts, and a status that marks a section with no
   authored content.
+- Selecting a section name opens the editor: the section name, each topic's name
+  and side, and its six field texts are editable, and any field can be marked not
+  applicable or unmarked. **Review save** shows the changed section name, topics
+  and fields and writes only when confirmed. The API diffs the full draft; topic
+  names, field texts and not-applicable flags are content changes, while reorder,
+  side changes and a section rename are not. A content change to a topic that any
+  account has graded is refused with 409 carrying the affected topic ids and
+  learner count, and nothing is written.
 - The cohort map assigns each section to at most one group A–E, or leaves it
   unassigned. Each group shows its section count; a count other than five is
   highlighted but never blocks the change.
@@ -253,7 +263,10 @@ cards, atomic whole-topic writes, multi-section run construction for Learn new a
 Repeat gaps, the admin OIDC round trip, dashboard counts, non-admin rejection,
 the cohort map with its unique section assignment, the people list and
 touched-section counts, group moves with progress untouched, in-app promotion and
-demotion on the next request, and the importer against short committed text
+demotion on the next request, the editor's load and diff rules (content changes
+versus reorder, side and rename), not-applicable fields disappearing from cards
+and progress, invalid drafts, the 409 refusal with its affected topics and learner
+count without writing anything, and the importer against short committed text
 fixtures (section and topic order, side matching, appended Syllabus-only topics,
 and the refusal to overwrite existing progress).
 The OIDC unit tests verify a signed `id_token` against a local test JWKS and
@@ -264,8 +277,8 @@ observable behaviour, not private helpers or SQL shapes.
 
 - Content comes from `apps/api/src/db/seed.ts`, shaped like the future importer
   output. The 25 section names and every field text are placeholders.
-- The dashboard, cohort map and people list are live. The content editor is a
-  later ticket.
+- The dashboard, cohort map, people list and section editor are live. The
+  keep-or-reset choice after a refused save is a later ticket.
 - The Brief/Syllabus importer is a CLI; it has not been run against the real
   documents in this build.
 - There is no deployment in this build.
