@@ -2,6 +2,7 @@ import { createHmac } from 'node:crypto';
 import type { Hono } from 'hono';
 import type { Group } from '@susanin/shared';
 import { createApp } from '../src/app';
+import type { OidcClient } from '../src/auth/oidc';
 import { type ApiConfig } from '../src/config';
 import { openDatabase, type SusaninDatabase } from '../src/db';
 import { seedContent } from '../src/db/seed';
@@ -30,16 +31,21 @@ export function testConfig(overrides: Partial<ApiConfig> = {}): ApiConfig {
 		devDisplayName: 'Dev',
 		databaseFile: ':memory:',
 		port: 0,
+		adminAppUrl: 'http://admin.test/admin/',
+		telegramOidc: null,
 		now: () => BASE_NOW,
 		...overrides
 	};
 }
 
-export function createTestApi(overrides: Partial<ApiConfig> = {}): TestApi {
+export function createTestApi(
+	overrides: Partial<ApiConfig> = {},
+	deps: { oidc?: OidcClient | null } = {}
+): TestApi {
 	const { db, close } = openDatabase(':memory:');
 	seedContent(db);
 	const config = testConfig(overrides);
-	const app = createApp({ db, config });
+	const app = createApp({ db, config, oidc: deps.oidc });
 	return { app, db, config, close };
 }
 
@@ -123,6 +129,15 @@ export function extractSessionCookie(response: Response): string {
 	if (!setCookie) throw new Error('The response did not set a session cookie.');
 	const match = setCookie.match(/susanin_session=[^;]+/);
 	if (!match) throw new Error(`No susanin_session in Set-Cookie: ${setCookie}`);
+	return match[0];
+}
+
+/** Reads one cookie from a Set-Cookie header, for tests that need a second cookie. */
+export function extractCookie(response: Response, name: string): string {
+	const setCookie = response.headers.get('set-cookie');
+	if (!setCookie) throw new Error('The response did not set any cookie.');
+	const match = setCookie.match(new RegExp(`${name}=[^;]+`));
+	if (!match) throw new Error(`No ${name} in Set-Cookie: ${setCookie}`);
 	return match[0];
 }
 
