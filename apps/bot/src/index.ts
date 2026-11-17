@@ -9,14 +9,7 @@ import {
 	type TelegramUpdate
 } from './telegram';
 
-const config: Config = (() => {
-	try {
-		return loadConfig();
-	} catch (error) {
-		console.error(describe(error));
-		process.exit(1);
-	}
-})();
+const config = loadConfigOrExit();
 
 const api = new TelegramApi(config.apiBase, config.token);
 
@@ -137,9 +130,7 @@ async function showReady(chatId: number, state: ChatState, group: Group): Promis
 	);
 }
 
-async function handleStart(chatId: number): Promise<void> {
-	const state = stateFor(chatId);
-
+async function handleStart(chatId: number, state: ChatState): Promise<void> {
 	if (state.stage === 'ready' && state.group) {
 		await showReady(chatId, state, state.group);
 		return;
@@ -156,7 +147,7 @@ async function handleStart(chatId: number): Promise<void> {
 
 async function handleMessage(chatId: number, state: ChatState, text: string): Promise<void> {
 	if (isStartCommand(text)) {
-		await handleStart(chatId);
+		await handleStart(chatId, state);
 		return;
 	}
 
@@ -182,24 +173,23 @@ async function handleCallback(query: TelegramCallbackQuery): Promise<void> {
 	if (chatId === undefined) return;
 
 	const data = query.data ?? '';
-	const groupValue = data.startsWith('group:') ? data.slice('group:'.length) : undefined;
 
-	if (data !== 'change-group' && groupValue === undefined) return;
-	if (groupValue !== undefined && !isGroup(groupValue)) {
+	if (data === 'change-group') {
+		await answerCallback(query.id);
+		await showGroupChoice(chatId, stateFor(chatId), 'Choose a different group.');
+		return;
+	}
+
+	if (!data.startsWith('group:')) return;
+
+	const group = data.slice('group:'.length);
+	if (!isGroup(group)) {
 		await answerCallback(query.id, 'Unknown group.');
 		return;
 	}
 
-	await answerCallback(query.id, groupValue ? `Group ${groupValue}` : undefined);
-
-	const state = stateFor(chatId);
-
-	if (groupValue !== undefined && isGroup(groupValue)) {
-		await showReady(chatId, state, groupValue);
-		return;
-	}
-
-	await showGroupChoice(chatId, state, 'Choose a different group.');
+	await answerCallback(query.id, `Group ${group}`);
+	await showReady(chatId, stateFor(chatId), group);
 }
 
 async function answerCallback(id: string, text?: string): Promise<void> {
@@ -235,11 +225,20 @@ async function handleUpdate(update: TelegramUpdate): Promise<void> {
 }
 
 function isStartCommand(text: string): boolean {
-	return text === '/start' || /^\/start(@\w+)?(\s|$)/.test(text);
+	return /^\/start(@\w+)?(\s|$)/.test(text);
 }
 
 function describe(error: unknown): string {
 	return error instanceof Error ? error.message : String(error);
+}
+
+function loadConfigOrExit(): Config {
+	try {
+		return loadConfig();
+	} catch (error) {
+		console.error(describe(error));
+		process.exit(1);
+	}
 }
 
 function delay(ms: number): Promise<void> {

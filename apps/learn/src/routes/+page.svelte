@@ -4,13 +4,11 @@
 	import { isGroup } from '@susanin/shared';
 	import { homeFixture } from '#lib/fixture';
 	import { overallStats, sectionStats } from '#lib/home';
-	import { telegramWebApp } from '#lib/telegram';
+	import { telegramFirstName, telegramWebApp } from '#lib/telegram';
 
 	const previewName = 'Alex';
 
-	let telegramName = $state<string | null>(
-		telegramWebApp()?.initDataUnsafe?.user?.first_name?.trim() || null
-	);
+	let telegramName = $state<string | null>(telegramFirstName());
 	let note = $state('');
 
 	onMount(() => {
@@ -21,7 +19,7 @@
 		telegram?.setHeaderColor?.('#f1f4ee');
 		telegram?.setBackgroundColor?.('#f1f4ee');
 
-		telegramName = telegram?.initDataUnsafe?.user?.first_name?.trim() || telegramName;
+		telegramName = telegramFirstName() ?? telegramName;
 	});
 
 	const params = $derived(page.url.searchParams);

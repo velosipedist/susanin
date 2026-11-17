@@ -23,3 +23,9 @@ export function telegramWebApp(): TelegramWebApp | undefined {
 	if (typeof window === 'undefined') return undefined;
 	return window.Telegram?.WebApp;
 }
+
+/** The learner's Telegram first name, or null outside Telegram. */
+export function telegramFirstName(): string | null {
+	const name = telegramWebApp()?.initDataUnsafe?.user?.first_name?.trim();
+	return name || null;
+}
