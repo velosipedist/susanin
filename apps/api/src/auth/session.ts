@@ -1,4 +1,5 @@
-import { createHmac, timingSafeEqual } from 'node:crypto';
+import { createHmac } from 'node:crypto';
+import { constantTimeEqual } from '../constant-time';
 
 export const SESSION_COOKIE = 'susanin_session';
 
@@ -38,11 +39,4 @@ export function readSessionToken(config: SessionConfig, token: string | undefine
 
 function sign(secret: string, payload: string): string {
 	return createHmac('sha256', secret).update(payload).digest('base64url');
-}
-
-function constantTimeEqual(left: string, right: string): boolean {
-	const leftBuffer = Buffer.from(left);
-	const rightBuffer = Buffer.from(right);
-	if (leftBuffer.length !== rightBuffer.length) return false;
-	return timingSafeEqual(leftBuffer, rightBuffer);
 }

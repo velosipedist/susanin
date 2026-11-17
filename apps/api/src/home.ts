@@ -5,9 +5,9 @@ import { fieldStates, groupSections, sections, topicFields, topics } from './db/
 
 export function loadHome(
 	db: SusaninDatabase,
-	account: { id: number; displayName: string; groupName: string | null }
+	account: { id: number; displayName: string },
+	group: Group
 ): HomeResponse {
-	const group = account.groupName as Group;
 	const progress = new Map<number, SectionProgress>();
 
 	const rows = db

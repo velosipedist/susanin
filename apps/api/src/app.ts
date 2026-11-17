@@ -1,12 +1,12 @@
-import { timingSafeEqual } from 'node:crypto';
 import { eq } from 'drizzle-orm';
 import { Hono, type Context } from 'hono';
 import { getCookie, setCookie } from 'hono/cookie';
 import { z } from 'zod';
-import { GROUPS, type Group } from '@susanin/shared';
-import { InitDataError, validateInitData } from './auth/init-data';
+import { GROUPS, isGroup } from '@susanin/shared';
+import { InitDataError, validateInitData, type TelegramInitUser } from './auth/init-data';
 import { SESSION_COOKIE, createSessionToken, readSessionToken } from './auth/session';
 import type { ApiConfig } from './config';
+import { constantTimeEqual } from './constant-time';
 import type { SusaninDatabase } from './db';
 import { accounts } from './db/schema';
 import { loadHome } from './home';
@@ -40,13 +40,12 @@ export function createApp({ db, config }: ApiContext): Hono {
 	app.get('/api/health', (c) => c.json({ ok: true }));
 
 	app.post('/api/auth/telegram', async (c) => {
-		const body = await readJson(c.req.raw);
-		const parsed = authSchema.safeParse(body);
+		const parsed = authSchema.safeParse(await readJson(c.req.raw));
 		if (!parsed.success) {
 			return c.json({ error: 'invalid-request' }, 400);
 		}
 
-		let user;
+		let user: TelegramInitUser;
 		try {
 			user = validateInitData(parsed.data.initData, {
 				botToken: config.botToken,
@@ -88,11 +87,11 @@ export function createApp({ db, config }: ApiContext): Hono {
 			return c.json({ error: 'unauthorized' }, 401);
 		}
 
-		if (!account.groupName) {
+		if (!isGroup(account.groupName)) {
 			return c.json({ error: 'group-required' }, 403);
 		}
 
-		return c.json(loadHome(db, account));
+		return c.json(loadHome(db, account, account.groupName));
 	});
 
 	app.use('/api/bot/*', async (c, next) => {
@@ -140,7 +139,7 @@ export function createApp({ db, config }: ApiContext): Hono {
 			return c.json({ error: 'onboarding-required' }, 404);
 		}
 
-		return c.json({ status: 'ready', group: parsed.data.group as Group });
+		return c.json({ status: 'ready', group: parsed.data.group });
 	});
 
 	app.post('/api/dev/session', (c) => {
@@ -183,11 +182,4 @@ async function readJson(request: Request): Promise<unknown> {
 	} catch {
 		return null;
 	}
-}
-
-function constantTimeEqual(left: string, right: string): boolean {
-	const leftBuffer = Buffer.from(left);
-	const rightBuffer = Buffer.from(right);
-	if (leftBuffer.length !== rightBuffer.length) return false;
-	return timingSafeEqual(leftBuffer, rightBuffer);
 }

@@ -1,41 +1,41 @@
 import { and, eq, sql } from 'drizzle-orm';
-import { FIELD_KEYS, GROUPS, type FieldKey, type Group, type Side } from '@susanin/shared';
+import { FIELD_KEYS, GROUPS, type Group, type Side } from '@susanin/shared';
 import type { SusaninDatabase } from './index';
 import { accounts, groupSections, groups, sections, topicFields, topics } from './schema';
-import { writeTopicFieldStates } from '../store/field-states';
+import { writeTopicFieldStates, type TopicFieldStates } from '../store/field-states';
 
 /**
  * Placeholder content until the Brief/Syllabus importer (issue #8) fills the
  * database. Names mirror the local demo; every field text is explicitly a
  * placeholder, never source material.
  */
-const SECTION_NAMES: Record<number, string> = {
-	1: 'Victoria Harbour',
-	2: 'Star Ferry',
-	3: "Queen's Pier",
-	4: 'Convention Centre',
-	5: 'Golden Bauhinia Square',
-	6: 'Noonday Gun',
-	7: 'Victoria Park',
-	8: 'Tin Hau Temple',
-	9: 'Jardine House',
-	10: 'The Peak Tram',
-	11: 'Peak Tower',
-	12: 'Repulse Bay',
-	13: 'Stanley Market',
-	14: 'Murray House',
-	15: 'Aberdeen Harbour',
-	16: 'Ocean Park',
-	17: 'Central District',
-	18: 'Statue Square',
-	19: 'The Cenotaph',
-	20: 'Hong Kong Park',
-	21: 'Bank of China Tower',
-	22: 'Cheung Kong Centre',
-	23: 'Lan Kwai Fong',
-	24: 'Man Mo Temple',
-	25: 'Happy Valley Racecourse'
-};
+const SECTION_NAMES = [
+	'Victoria Harbour',
+	'Star Ferry',
+	"Queen's Pier",
+	'Convention Centre',
+	'Golden Bauhinia Square',
+	'Noonday Gun',
+	'Victoria Park',
+	'Tin Hau Temple',
+	'Jardine House',
+	'The Peak Tram',
+	'Peak Tower',
+	'Repulse Bay',
+	'Stanley Market',
+	'Murray House',
+	'Aberdeen Harbour',
+	'Ocean Park',
+	'Central District',
+	'Statue Square',
+	'The Cenotaph',
+	'Hong Kong Park',
+	'Bank of China Tower',
+	'Cheung Kong Centre',
+	'Lan Kwai Fong',
+	'Man Mo Temple',
+	'Happy Valley Racecourse'
+];
 
 /** Temporary A–E mapping until admins assign sections (issue #9). */
 export const DEMO_GROUP_SECTIONS: Record<Group, number[]> = {
@@ -54,8 +54,8 @@ export function seedContent(db: SusaninDatabase): void {
 			tx.insert(groups).values({ name: group }).onConflictDoNothing().run();
 		}
 
-		for (const [number, name] of Object.entries(SECTION_NAMES)) {
-			const sectionNumber = Number(number);
+		for (const [index, name] of SECTION_NAMES.entries()) {
+			const sectionNumber = index + 1;
 
 			tx.insert(sections).values({ number: sectionNumber, name }).onConflictDoNothing().run();
 
@@ -110,21 +110,22 @@ export function seedDemoAccount(
 		.from(accounts)
 		.where(eq(accounts.telegramId, input.telegramId))
 		.get();
+	if (existing) return existing.id;
 
-	const accountId =
-		existing?.id ??
-		(db
-			.insert(accounts)
-			.values({
-				telegramId: input.telegramId,
-				displayName: input.displayName,
-				groupName: input.group,
-				isAdmin: false,
-				createdAt: input.now
-			})
-			.returning({ id: accounts.id })
-			.get()?.id as number);
+	const inserted = db
+		.insert(accounts)
+		.values({
+			telegramId: input.telegramId,
+			displayName: input.displayName,
+			groupName: input.group,
+			isAdmin: false,
+			createdAt: input.now
+		})
+		.returning({ id: accounts.id })
+		.get();
+	if (!inserted) throw new Error('Could not create the demo account.');
 
+	const accountId = inserted.id;
 	const sectionNumbers = DEMO_GROUP_SECTIONS[input.group];
 	const topicRows = db
 		.select({ id: topics.id, position: topics.position, sectionNumber: topics.sectionNumber })
@@ -136,13 +137,9 @@ export function seedDemoAccount(
 	for (const topic of topicRows) {
 		if (topic.position > 2) continue;
 
-		const states: Partial<Record<FieldKey, 'learned' | 'unlearned'>> = {};
+		const states: TopicFieldStates = {};
 		for (const [index, key] of FIELD_KEYS.entries()) {
-			if (topic.position === 1) {
-				states[key] = 'learned';
-			} else {
-				states[key] = index < 4 ? 'learned' : 'unlearned';
-			}
+			states[key] = topic.position === 1 || index < 4 ? 'learned' : 'unlearned';
 		}
 
 		writeTopicFieldStates(db, {

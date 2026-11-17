@@ -25,17 +25,23 @@
 	const group = $derived(home?.account.group ?? '');
 	const longName = $derived(firstName.length > 15);
 
-	const message = $derived(
-		result === null
-			? 'Loading your tour…'
-			: result.status === 'onboarding-required'
-				? 'Join the tour with the invite code in the bot, then choose your group.'
-				: result.status === 'group-required'
-					? 'Choose your group in the bot before opening Susanin.'
-					: result.status === 'signed-out'
-						? 'Open Susanin from the Telegram bot to sign in.'
-						: 'Susanin is unavailable right now. Try again in a moment.'
-	);
+	const message = $derived(statusMessage(result));
+
+	function statusMessage(current: HomeResult | null): string {
+		if (!current) return 'Loading your tour…';
+
+		switch (current.status) {
+			case 'onboarding-required':
+				return 'Join the tour with the invite code in the bot, then choose your group.';
+			case 'group-required':
+				return 'Choose your group in the bot before opening Susanin.';
+			case 'signed-out':
+				return 'Open Susanin from the Telegram bot to sign in.';
+			case 'ready':
+			case 'unavailable':
+				return 'Susanin is unavailable right now. Try again in a moment.';
+		}
+	}
 
 	function preview(label: string) {
 		note = `${label} is wired in the next build.`;

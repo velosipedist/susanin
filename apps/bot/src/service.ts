@@ -1,7 +1,7 @@
-import { isGroup, type Group } from '@susanin/shared';
+import { isGroup, isOnboardingStage, type Group, type OnboardingStage } from '@susanin/shared';
 
 export type BotStartResult = {
-	stage: 'awaiting-invite' | 'choosing-group' | 'ready';
+	stage: OnboardingStage;
 	group?: Group;
 };
 
@@ -28,8 +28,8 @@ export class SusaninService {
 	}
 
 	async start(input: { telegramId: number; firstName: string }): Promise<BotStartResult> {
-		const body = await this.#post<{ stage: string; group?: string }>('/api/bot/start', input);
-		if (body.stage !== 'awaiting-invite' && body.stage !== 'choosing-group' && body.stage !== 'ready') {
+		const body = await this.#post<{ stage: unknown; group?: unknown }>('/api/bot/start', input);
+		if (!isOnboardingStage(body.stage)) {
 			throw new SusaninServiceError(`Unknown onboarding stage: ${body.stage}`, 500);
 		}
 

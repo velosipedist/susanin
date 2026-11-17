@@ -1,4 +1,5 @@
-import { createHmac, timingSafeEqual } from 'node:crypto';
+import { createHmac } from 'node:crypto';
+import { constantTimeEqual } from '../constant-time';
 
 export type TelegramInitUser = {
 	id: number;
@@ -104,11 +105,4 @@ function isTelegramUser(value: unknown): value is {
 	if (typeof value !== 'object' || value === null) return false;
 	const user = value as Record<string, unknown>;
 	return typeof user.id === 'number' && typeof user.first_name === 'string';
-}
-
-function constantTimeEqual(left: string, right: string): boolean {
-	const leftBuffer = Buffer.from(left);
-	const rightBuffer = Buffer.from(right);
-	if (leftBuffer.length !== rightBuffer.length) return false;
-	return timingSafeEqual(leftBuffer, rightBuffer);
 }

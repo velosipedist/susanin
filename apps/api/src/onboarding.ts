@@ -1,14 +1,12 @@
-import { timingSafeEqual } from 'node:crypto';
 import { and, eq, gte, sql } from 'drizzle-orm';
-import type { Group } from '@susanin/shared';
+import { isGroup, type Group, type OnboardingStage } from '@susanin/shared';
 import type { ApiConfig } from './config';
+import { constantTimeEqual } from './constant-time';
 import type { SusaninDatabase } from './db';
 import { accounts, inviteAttempts } from './db/schema';
 
 export const FAILED_ATTEMPT_LIMIT = 20;
 const FAILED_ATTEMPT_WINDOW_MS = 60 * 60 * 1000;
-
-export type OnboardingStage = 'awaiting-invite' | 'choosing-group' | 'ready';
 
 export type StartResult = {
 	stage: OnboardingStage;
@@ -36,9 +34,9 @@ export function startOnboarding(
 
 	const account = findAccountByTelegramId(db, input.telegramId);
 	if (!account) return { stage: 'awaiting-invite' };
-	if (!account.groupName) return { stage: 'choosing-group' };
+	if (!isGroup(account.groupName)) return { stage: 'choosing-group' };
 
-	return { stage: 'ready', group: account.groupName as Group };
+	return { stage: 'ready', group: account.groupName };
 }
 
 export function submitInvite(
@@ -69,7 +67,7 @@ export function submitInvite(
 		return { status: 'rate-limited' };
 	}
 
-	if (!inviteCodeMatches(input.code, config.inviteCode)) {
+	if (!constantTimeEqual(input.code, config.inviteCode)) {
 		db.insert(inviteAttempts)
 			.values({ telegramId: input.telegramId, attemptedAt: now })
 			.run();
@@ -120,12 +118,4 @@ export function findAccountById(
 	accountId: number
 ): typeof accounts.$inferSelect | undefined {
 	return db.select().from(accounts).where(eq(accounts.id, accountId)).get();
-}
-
-/** Constant-time comparison; a length difference is not secret. */
-function inviteCodeMatches(candidate: string, expected: string): boolean {
-	const left = Buffer.from(candidate);
-	const right = Buffer.from(expected);
-	if (left.length !== right.length) return false;
-	return timingSafeEqual(left, right);
 }

@@ -21,14 +21,16 @@ const migrationsFolder = fileURLToPath(new URL('../../drizzle', import.meta.url)
  * the checkout (ADR 0002).
  */
 export function openDatabase(file = ':memory:'): DatabaseHandle {
-	if (file !== ':memory:') {
+	const isMemory = file === ':memory:';
+
+	if (!isMemory) {
 		mkdirSync(dirname(file), { recursive: true });
 	}
 
 	const sqlite = new Database(file);
 	sqlite.pragma('foreign_keys = ON');
 
-	if (file !== ':memory:') {
+	if (!isMemory) {
 		sqlite.pragma('journal_mode = WAL');
 	}
 

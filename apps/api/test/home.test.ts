@@ -1,6 +1,6 @@
 import { and, eq } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
-import type { HomeResponse } from '@susanin/shared';
+import type { Group, HomeResponse } from '@susanin/shared';
 import { accounts, topics, topicFields } from '../src/db/schema';
 import { writeTopicFieldStates } from '../src/store/field-states';
 import { createTestApi, getHome, onboardLearner, signIn } from './helpers';
@@ -8,7 +8,7 @@ import { createTestApi, getHome, onboardLearner, signIn } from './helpers';
 async function homeFor(
 	api: ReturnType<typeof createTestApi>,
 	telegramId: number,
-	group: 'A' | 'B' | 'C' | 'D' | 'E'
+	group: Group
 ): Promise<HomeResponse> {
 	await onboardLearner(api, { telegramId, firstName: 'Mei', group });
 	const { cookie } = await signIn(api, { telegramId, firstName: 'Mei' });

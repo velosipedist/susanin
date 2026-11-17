@@ -6,6 +6,15 @@ export function isGroup(value: unknown): value is Group {
 	return typeof value === 'string' && (GROUPS as readonly string[]).includes(value);
 }
 
+/** Where an account stands in the bot's onboarding flow. */
+export const ONBOARDING_STAGES = ['awaiting-invite', 'choosing-group', 'ready'] as const;
+
+export type OnboardingStage = (typeof ONBOARDING_STAGES)[number];
+
+export function isOnboardingStage(value: unknown): value is OnboardingStage {
+	return typeof value === 'string' && (ONBOARDING_STAGES as readonly string[]).includes(value);
+}
+
 /** The six prompts every topic is answered by, in canonical order. */
 export const FIELD_KEYS = ['what', 'when', 'where', 'why', 'who', 'how'] as const;
 

@@ -48,7 +48,9 @@ async function post(path: string, body: unknown): Promise<Response> {
 	}
 }
 
-async function authFailure(response: Response): Promise<'onboarding-required' | 'group-required' | 'signed-out'> {
+async function authFailure(
+	response: Response
+): Promise<'onboarding-required' | 'group-required' | 'signed-out'> {
 	const body = (await response.json().catch(() => null)) as { error?: string } | null;
 
 	if (body?.error === 'onboarding-required') return 'onboarding-required';

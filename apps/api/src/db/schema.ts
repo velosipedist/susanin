@@ -9,7 +9,7 @@ import {
 	text,
 	uniqueIndex
 } from 'drizzle-orm/sqlite-core';
-import { FIELD_KEYS, GROUPS, SIDES } from '@susanin/shared';
+import { FIELD_KEYS, SIDES } from '@susanin/shared';
 
 const list = (values: readonly string[]) => sql.raw(values.map((value) => `'${value}'`).join(', '));
 
@@ -124,5 +124,3 @@ export const inviteAttempts = sqliteTable(
 	},
 	(table) => [index('invite_attempts_lookup').on(table.telegramId, table.attemptedAt)]
 );
-
-export const GROUP_NAMES = GROUPS;

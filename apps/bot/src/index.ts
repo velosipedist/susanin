@@ -1,4 +1,4 @@
-import { GROUPS, isGroup, type Group } from '@susanin/shared';
+import { GROUPS, isGroup, type Group, type OnboardingStage } from '@susanin/shared';
 import { loadConfig, type Config } from './config';
 import { SusaninService } from './service';
 import {
@@ -15,15 +15,13 @@ const config = loadConfigOrExit();
 const api = new TelegramApi(config.apiBase, config.token);
 const service = new SusaninService(config.serviceUrl, config.serviceSecret);
 
-type Stage = 'awaiting-invite' | 'choosing-group' | 'ready';
-
 /**
  * Local UI state only: which message the bot should edit in place. Account
  * membership and group live in the API, so a restart never asks a known
  * account for the invite code again.
  */
 type ChatState = {
-	stage: Stage;
+	stage: OnboardingStage;
 	group?: Group;
 	panelId?: number;
 };
