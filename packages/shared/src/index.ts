@@ -406,3 +406,36 @@ export type AdminSectionSaveResponse = {
 	ok: true;
 	draft: AdminSectionDraft;
 };
+
+/** An appended topic, with the six empty fields the database trigger created. */
+export type AdminTopicCreateResponse = {
+	ok: true;
+	topic: AdminDraftTopic;
+};
+
+/** Dragging sends the section's topic ids in their new route order. */
+export type AdminSectionOrderBody = {
+	topicIds: number[];
+};
+
+/** A reorder is written immediately; the returned draft carries the stored order. */
+export type AdminSectionOrderResponse = {
+	ok: true;
+	draft: AdminSectionDraft;
+};
+
+/**
+ * Deletion is gated like any content change: when the topic carries verdicts,
+ * the request is refused until the caller answers Keep (false) or Reset (true).
+ */
+export type AdminTopicDeleteBody = {
+	resetProgress?: boolean;
+};
+
+/** A refused deletion. The topic and its states are still stored. */
+export type AdminTopicDeleteConflict = {
+	error: 'progress-affected';
+	affectedTopicIds: number[];
+	affectedLearners: number;
+	topicName: string;
+};

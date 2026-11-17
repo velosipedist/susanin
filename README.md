@@ -4,12 +4,13 @@ Susanin drills the facts of a fixed Hong Kong Island coach tour. The repository
 now holds the **foundation** (issue #3), the **single-section run** (issue #4), the
 **multi-section runs** (issue #5), the **full section list** (issue #6), the
 **admin app** (issue #7), the **importer** (issue #8), the **cohort map and people
-list** (issue #9), the **section and topic editor** (issue #10) and the **save-time
-Keep/Reset choice** (issue #11): a real API over SQLite, Telegram onboarding that
-remembers accounts, a signed session cookie for the Mini App, the B-layout learner
-home reading from the database, topic cards that write a complete card atomically,
-a no-pagination admin dashboard behind Telegram OIDC sign-in, and section editing
-with a review step where a change that somebody graded asks Keep or Reset.
+list** (issue #9), the **section and topic editor** (issue #10), the **save-time
+Keep/Reset choice** (issue #11) and **adding, deleting and dragging topics**
+(issue #12): a real API over SQLite, Telegram onboarding that remembers accounts,
+a signed session cookie for the Mini App, the B-layout learner home reading from
+the database, topic cards that write a complete card atomically, a no-pagination
+admin dashboard behind Telegram OIDC sign-in, and section editing with a review
+step where a change that somebody graded asks Keep or Reset.
 
 ## What works
 
@@ -63,6 +64,12 @@ with a review step where a change that somebody graded asks Keep or Reset.
   asks **Keep progress** or **Reset progress**. Keep writes the change and leaves
   every verdict, while Reset writes it and returns every field of the affected
   topics to Untouched for every account. A save with no graded field never asks.
+- Dragging a topic's handle writes the new route order immediately, so cards and
+  runs follow at once, and never asks about progress. **Add topic** appends a
+  topic with six empty fields and no side; it stays in the draft and produces no
+  card until a field is authored. **Delete** asks for confirmation; a topic that
+  any learner has graded first asks Keep or Reset, and the topic and its states
+  are removed either way.
 - The cohort map assigns each section to at most one group A–E, or leaves it
   unassigned. Each group shows its section count; a count other than five is
   highlighted but never blocks the change.
@@ -271,8 +278,9 @@ versus reorder, side and rename), not-applicable fields disappearing from cards
 and progress, invalid drafts, the 409 refusal with its affected topics and learner
 count without writing anything, the Keep/Reset round trip with Reset clearing
 states across several learners and Keep preserving them, the no-prompt path for a
-reorder, side change or rename, and the importer against short committed text
-fixtures (section and topic order, side matching, appended Syllabus-only topics,
+reorder, side change or rename, appended empty topics producing no card, dragged
+order reaching cards at once, deletion with and without states and its Keep/Reset
+gate, and the importer against short committed text fixtures (section and topic order, side matching, appended Syllabus-only topics,
 and the refusal to overwrite existing progress).
 The OIDC unit tests verify a signed `id_token` against a local test JWKS and
 reject a wrong issuer, wrong audience, expiry and a bad signature. They assert
@@ -282,9 +290,8 @@ observable behaviour, not private helpers or SQL shapes.
 
 - Content comes from `apps/api/src/db/seed.ts`, shaped like the future importer
   output. The 25 section names and every field text are placeholders.
-- The dashboard, cohort map, people list, section editor and the keep-or-reset
-  choice after a refused save are live. Adding, deleting and dragging topics in
-  the editor is a later ticket.
+- The dashboard, cohort map, people list, section editor, topic add/delete/drag
+  and the keep-or-reset choice after a refused save are live.
 - The Brief/Syllabus importer is a CLI; it has not been run against the real
   documents in this build.
 - There is no deployment in this build.

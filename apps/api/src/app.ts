@@ -13,8 +13,11 @@ import {
 	setAccountAdmin
 } from './admin';
 import {
+	appendTopic,
+	deleteTopic,
 	draftMatchesStoredTopics,
 	loadSectionDraft,
+	reorderSectionTopics,
 	reviewSectionDraft,
 	saveSectionDraft,
 	sectionDraftBodySchema
@@ -69,6 +72,11 @@ const authSchema = z.object({ initData: z.string() });
 const verdictsSchema = z.object({
 	verdicts: z.record(z.string(), z.enum(FIELD_STATE_VALUES))
 });
+
+const sectionOrderSchema = z.object({
+	topicIds: z.array(z.number().int().positive())
+});
+const topicDeleteSchema = z.object({ resetProgress: z.boolean().optional() });
 
 const sectionGroupSchema = z.object({ group: z.enum(GROUPS).nullable() });
 const accountGroupSchema = z.object({ group: z.enum(GROUPS) });
@@ -388,6 +396,83 @@ export function createApp({ db, config, oidc: providedOidc }: ApiContext): Hono 
 						affectedTopicIds: result.review.affectedTopicIds,
 						affectedLearners: result.review.affectedLearners,
 						review: result.review
+					},
+					409
+				);
+		}
+	});
+
+	app.post('/api/admin/sections/:number/topics', (c) => {
+		const denied = requireAdmin(c, db, config);
+		if (denied) return denied;
+
+		const sectionNumber = routeId(c.req.param('number'));
+		if (sectionNumber === undefined) {
+			return c.json({ error: 'section-not-found' }, 404);
+		}
+
+		const topic = appendTopic(db, sectionNumber);
+		if (!topic) {
+			return c.json({ error: 'section-not-found' }, 404);
+		}
+
+		return c.json({ ok: true, topic });
+	});
+
+	app.put('/api/admin/sections/:number/order', async (c) => {
+		const denied = requireAdmin(c, db, config);
+		if (denied) return denied;
+
+		const sectionNumber = routeId(c.req.param('number'));
+		if (sectionNumber === undefined) {
+			return c.json({ error: 'section-not-found' }, 404);
+		}
+
+		const parsed = sectionOrderSchema.safeParse(await readJson(c.req.raw));
+		if (!parsed.success) {
+			return c.json({ error: 'invalid-order' }, 400);
+		}
+
+		const result = reorderSectionTopics(db, sectionNumber, parsed.data.topicIds);
+
+		switch (result.status) {
+			case 'ok':
+				return c.json({ ok: true, draft: result.draft });
+			case 'not-found':
+				return c.json({ error: 'section-not-found' }, 404);
+			case 'invalid-topics':
+				return c.json({ error: 'invalid-topics' }, 400);
+		}
+	});
+
+	app.delete('/api/admin/topics/:topicId', async (c) => {
+		const denied = requireAdmin(c, db, config);
+		if (denied) return denied;
+
+		const topicId = routeId(c.req.param('topicId'));
+		if (topicId === undefined) {
+			return c.json({ error: 'topic-not-found' }, 404);
+		}
+
+		const parsed = topicDeleteSchema.safeParse((await readJson(c.req.raw)) ?? {});
+		if (!parsed.success) {
+			return c.json({ error: 'invalid-request' }, 400);
+		}
+
+		const result = deleteTopic(db, topicId, parsed.data.resetProgress);
+
+		switch (result.status) {
+			case 'ok':
+				return c.json({ ok: true });
+			case 'not-found':
+				return c.json({ error: 'topic-not-found' }, 404);
+			case 'progress-affected':
+				return c.json(
+					{
+						error: 'progress-affected',
+						affectedTopicIds: result.affectedTopicIds,
+						affectedLearners: result.affectedLearners,
+						topicName: result.topicName
 					},
 					409
 				);

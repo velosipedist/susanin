@@ -1,4 +1,4 @@
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import {
 	FIELD_KEYS,
@@ -147,7 +147,8 @@ export function loadSectionDraft(
 
 /**
  * A save carries the section's full topic list, so the draft must name exactly
- * the stored topics. Adding and deleting topics arrive in a later change.
+ * the stored topics. Topics are added and deleted through their own routes, so
+ * by the time a draft is saved its topic set is already settled.
  */
 export function draftMatchesStoredTopics(
 	stored: AdminSectionDraft,
@@ -366,4 +367,133 @@ export function writeSectionDraft(
 			}
 		}
 	});
+}
+
+/** A new topic has a name the editor can show, six empty fields and no side. */
+export const NEW_TOPIC_NAME = 'New topic';
+
+/**
+ * Appends an empty topic at the end of a section. The database trigger creates
+ * its exactly-six fields, so the topic exists in the draft immediately while
+ * contributing no gradeable card until an admin authors a field.
+ */
+export function appendTopic(
+	db: SusaninDatabase,
+	sectionNumber: number
+): AdminDraftTopic | null {
+	const section = db
+		.select({ number: sections.number })
+		.from(sections)
+		.where(eq(sections.number, sectionNumber))
+		.get();
+	if (!section) return null;
+
+	const last = db
+		.select({ position: sql<number>`coalesce(max(${topics.position}), 0)` })
+		.from(topics)
+		.where(eq(topics.sectionNumber, sectionNumber))
+		.get();
+
+	const inserted = db
+		.insert(topics)
+		.values({
+			sectionNumber,
+			position: (last?.position ?? 0) + 1,
+			name: NEW_TOPIC_NAME,
+			side: null
+		})
+		.returning({ id: topics.id })
+		.get();
+	if (!inserted) return null;
+
+	const draft = loadSectionDraft(db, sectionNumber);
+	return draft?.topics.find((topic) => topic.id === inserted.id) ?? null;
+}
+
+export type ReorderTopicsResult =
+	| { status: 'ok'; draft: AdminSectionDraft }
+	| { status: 'not-found' }
+	| { status: 'invalid-topics' };
+
+/**
+ * Writes a dragged order immediately. Only the stored topics may appear, once
+ * each; no content is read from the caller, so this can never prompt about
+ * progress or publish an unsaved field edit.
+ */
+export function reorderSectionTopics(
+	db: SusaninDatabase,
+	sectionNumber: number,
+	topicIds: readonly number[]
+): ReorderTopicsResult {
+	const stored = loadSectionDraft(db, sectionNumber);
+	if (!stored) return { status: 'not-found' };
+
+	const storedIds = new Set(stored.topics.map((topic) => topic.id));
+	const postedIds = new Set(topicIds);
+	if (
+		topicIds.length !== stored.topics.length ||
+		postedIds.size !== topicIds.length ||
+		!topicIds.every((id) => storedIds.has(id))
+	) {
+		return { status: 'invalid-topics' };
+	}
+
+	const byId = new Map(stored.topics.map((topic) => [topic.id, topic]));
+	const ordered = topicIds.map((id) => byId.get(id) as AdminDraftTopic);
+
+	writeSectionDraft(db, sectionNumber, {
+		name: stored.section.name,
+		topics: ordered
+	});
+
+	const draft = loadSectionDraft(db, sectionNumber);
+	return draft ? { status: 'ok', draft } : { status: 'not-found' };
+}
+
+export type DeleteTopicResult =
+	| { status: 'ok' }
+	| { status: 'not-found' }
+	| {
+			status: 'progress-affected';
+			affectedTopicIds: number[];
+			affectedLearners: number;
+			topicName: string;
+	  };
+
+/**
+ * Hard-deletes one topic. When it carries verdicts, deletion is refused until
+ * the caller answers Keep (false) or Reset (true). Either answer removes the
+ * topic and, by cascade, its fields and states.
+ */
+export function deleteTopic(
+	db: SusaninDatabase,
+	topicId: number,
+	resetProgress?: boolean
+): DeleteTopicResult {
+	const topic = db
+		.select({ id: topics.id, name: topics.name })
+		.from(topics)
+		.where(eq(topics.id, topicId))
+		.get();
+	if (!topic) return { status: 'not-found' };
+
+	const progress = loadAffectedProgress(db, [topicId]);
+	if (progress.affectedTopicIds.length > 0 && resetProgress === undefined) {
+		return {
+			status: 'progress-affected',
+			affectedTopicIds: progress.affectedTopicIds,
+			affectedLearners: progress.affectedLearners,
+			topicName: topic.name
+		};
+	}
+
+	db.transaction((tx) => {
+		if (resetProgress === true) {
+			tx.delete(fieldStates).where(eq(fieldStates.topicId, topicId)).run();
+		}
+
+		tx.delete(topics).where(eq(topics.id, topicId)).run();
+	});
+
+	return { status: 'ok' };
 }

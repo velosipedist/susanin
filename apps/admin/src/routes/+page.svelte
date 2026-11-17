@@ -16,7 +16,9 @@
 		type AdminSectionSaveBody,
 		type AdminSectionSaveResponse,
 		type AdminSectionStatus,
-		type AdminSessionResponse
+		type AdminSessionResponse,
+		type AdminTopicCreateResponse,
+		type AdminTopicDeleteConflict
 	} from '@susanin/shared';
 
 	type View =
@@ -32,10 +34,17 @@
 				people: AdminPeopleResponse;
 		  };
 
+	type DeleteConflict = {
+		topicId: number;
+		topicName: string;
+		affectedLearners: number;
+	};
+
 	type EditorState = {
 		draft: AdminSectionDraft;
 		review: AdminSectionReview | null;
 		conflict: AdminProgressConflict | null;
+		deleteConflict: DeleteConflict | null;
 		error: string;
 		busy: boolean;
 	};
@@ -44,6 +53,7 @@
 	let loginMessage = $state('');
 	let actionMessage = $state('');
 	let editor = $state<EditorState | null>(null);
+	let draggedTopicId = $state<number | null>(null);
 
 	onMount(() => {
 		loginMessage = loginErrorMessage(new URLSearchParams(window.location.search).get('error'));
@@ -149,6 +159,7 @@
 			draft: (await response.json()) as AdminSectionDraft,
 			review: null,
 			conflict: null,
+			deleteConflict: null,
 			error: '',
 			busy: false
 		};
@@ -156,6 +167,7 @@
 
 	function closeEditor(): void {
 		editor = null;
+		draggedTopicId = null;
 	}
 
 	/** Drops the review panel and any pending Keep/Reset choice. */
@@ -167,13 +179,179 @@
 
 	/** Any edit after a review makes that review stale, so it is dropped. */
 	function invalidateReview(): void {
-		if (!editor || (!editor.review && !editor.conflict)) return;
+		if (!editor || (!editor.review && !editor.conflict && !editor.deleteConflict)) return;
 		dismissReview();
+		editor.deleteConflict = null;
 		editor.error = '';
 	}
 
 	function setSide(topic: AdminSectionDraft['topics'][number], value: string): void {
 		topic.side = isSide(value) ? value : null;
+	}
+
+	/** Appends a persisted empty topic without disturbing unsaved edits. */
+	async function addTopic(): Promise<void> {
+		const state = editor;
+		if (!state || state.busy) return;
+
+		state.busy = true;
+		state.error = '';
+
+		const response = await postApi(
+			`/api/admin/sections/${state.draft.section.number}/topics`,
+			{}
+		);
+		state.busy = false;
+		if (editor !== state) return;
+
+		if (!response || !response.ok) {
+			state.error =
+				response?.status === 404
+					? 'This section no longer exists.'
+					: 'The topic could not be added. Try again.';
+			return;
+		}
+
+		const body = (await response.json()) as AdminTopicCreateResponse;
+		state.draft.topics = [...state.draft.topics, body.topic];
+		state.review = null;
+		state.conflict = null;
+		state.deleteConflict = null;
+		state.error = '';
+		actionMessage = 'Topic added at the end.';
+		await refreshDashboard();
+	}
+
+	function startTopicDrag(event: DragEvent, topicId: number): void {
+		draggedTopicId = topicId;
+		if (event.dataTransfer) {
+			event.dataTransfer.effectAllowed = 'move';
+			event.dataTransfer.setData('text/plain', String(topicId));
+		}
+	}
+
+	function allowTopicDrop(event: DragEvent): void {
+		event.preventDefault();
+		if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+	}
+
+	/** Saves a dragged order immediately; only positions change on the server. */
+	async function dropOnTopic(event: DragEvent, targetId: number): Promise<void> {
+		event.preventDefault();
+		const draggedId = draggedTopicId;
+		draggedTopicId = null;
+
+		const state = editor;
+		if (draggedId === null || draggedId === targetId || !state || state.busy) return;
+
+		const from = state.draft.topics.findIndex((topic) => topic.id === draggedId);
+		const to = state.draft.topics.findIndex((topic) => topic.id === targetId);
+		if (from < 0 || to < 0) return;
+
+		const previous = state.draft.topics;
+		const next = [...previous];
+		const [moved] = next.splice(from, 1);
+		next.splice(to, 0, moved);
+
+		state.draft.topics = next;
+		state.review = null;
+		state.conflict = null;
+		state.deleteConflict = null;
+		state.error = '';
+		state.busy = true;
+
+		const response = await putApi(
+			`/api/admin/sections/${state.draft.section.number}/order`,
+			{ topicIds: next.map((topic) => topic.id) }
+		);
+		state.busy = false;
+		if (editor !== state) return;
+
+		if (!response || !response.ok) {
+			state.draft.topics = previous;
+			state.error = 'The new order could not be saved. Try again.';
+			return;
+		}
+
+		actionMessage = 'Topic order saved.';
+	}
+
+	function requestDelete(topic: AdminSectionDraft['topics'][number]): void {
+		const state = editor;
+		if (!state || state.busy) return;
+
+		const message =
+			`Delete "${topic.name}"? Its six fields and every learner's progress on it ` +
+			'will be removed.';
+		if (!window.confirm(message)) return;
+
+		void sendDelete(topic.id);
+	}
+
+	/**
+	 * Deletes one topic. Without a choice the API refuses when the topic carries
+	 * verdicts; the returned conflict asks the editor for Keep or Reset.
+	 */
+	async function sendDelete(topicId: number, resetProgress?: boolean): Promise<void> {
+		const state = editor;
+		if (!state || state.busy) return;
+
+		state.busy = true;
+		state.error = '';
+
+		const response = await request(`/api/admin/topics/${topicId}`, {
+			method: 'DELETE',
+			...(resetProgress === undefined
+				? {}
+				: {
+						headers: { 'content-type': 'application/json' },
+						body: JSON.stringify({ resetProgress })
+					})
+		});
+		state.busy = false;
+		if (editor !== state) return;
+
+		if (!response) {
+			state.error = 'The delete request could not be made. Try again.';
+			return;
+		}
+
+		if (response.status === 409) {
+			const conflict = (await response.json()) as AdminTopicDeleteConflict;
+			state.deleteConflict = {
+				topicId,
+				topicName: conflict.topicName,
+				affectedLearners: conflict.affectedLearners
+			};
+			state.review = null;
+			state.conflict = null;
+			state.error = '';
+			return;
+		}
+
+		if (!response.ok) {
+			state.error =
+				response.status === 404
+					? 'This topic no longer exists.'
+					: 'The topic could not be deleted. Try again.';
+			return;
+		}
+
+		state.draft.topics = state.draft.topics.filter((topic) => topic.id !== topicId);
+		state.deleteConflict = null;
+		state.review = null;
+		state.conflict = null;
+		actionMessage = 'Topic deleted.';
+		await refreshDashboard();
+	}
+
+	function deleteWithChoice(choice: boolean): void {
+		if (!editor?.deleteConflict) return;
+		void sendDelete(editor.deleteConflict.topicId, choice);
+	}
+
+	function dismissDeleteConflict(): void {
+		if (editor) editor.deleteConflict = null;
 	}
 
 	async function reviewDraft(): Promise<void> {
@@ -436,9 +614,31 @@
 					/>
 				</label>
 
+				<p class="muted editor-hint">
+					Drag a topic's handle to reorder it; the new order saves immediately. A new topic
+					starts with six empty fields and no side, so it produces no card until a field is
+					authored.
+				</p>
+
 				{#each editor.draft.topics as topic, topicIndex (topic.id)}
-					<article class="topic-editor">
+					<article
+						class="topic-editor"
+						class:dragging={draggedTopicId === topic.id}
+						ondragover={allowTopicDrop}
+						ondrop={(event) => void dropOnTopic(event, topic.id)}
+					>
 						<div class="topic-heading">
+							<button
+								class="drag-handle"
+								type="button"
+								draggable="true"
+								title="Drag to reorder"
+								aria-label={`Drag topic ${topicIndex + 1} to reorder`}
+								ondragstart={(event) => startTopicDrag(event, topic.id)}
+								ondragend={() => (draggedTopicId = null)}
+							>
+								⠿
+							</button>
 							<h3>Topic {topicIndex + 1}</h3>
 							<label>
 								<span>Name</span>
@@ -464,6 +664,14 @@
 									<option value="right">Passengers' right</option>
 								</select>
 							</label>
+							<button
+								class="button button-danger button-small topic-delete"
+								type="button"
+								onclick={() => requestDelete(topic)}
+								disabled={editor.busy}
+							>
+								Delete
+							</button>
 						</div>
 
 						<div class="field-editors">
@@ -489,6 +697,61 @@
 						</div>
 					</article>
 				{/each}
+
+				<div class="editor-add">
+					<button
+						class="button button-quiet"
+						type="button"
+						onclick={() => void addTopic()}
+						disabled={editor.busy}
+					>
+						+ Add topic at the end
+					</button>
+				</div>
+
+				{#if editor.deleteConflict}
+					{@const pending = editor.deleteConflict}
+					{@const learnersHave =
+						pending.affectedLearners === 1 ? 'learner has' : 'learners have'}
+					<section class="choice-panel" aria-labelledby="delete-choice-heading">
+						<h4 id="delete-choice-heading">Keep or reset progress before deleting?</h4>
+						<p>
+							{pending.affectedLearners}
+							{learnersHave}
+							graded <strong>{pending.topicName}</strong>.
+						</p>
+						<p class="muted">
+							The topic and its field states are removed either way. <strong>Keep</strong> leaves
+							every other topic's progress untouched; <strong>Reset</strong> clears this topic's
+							verdicts first.
+						</p>
+						<div class="editor-actions">
+							<button
+								class="button"
+								type="button"
+								onclick={() => deleteWithChoice(false)}
+								disabled={editor.busy}
+							>
+								{editor.busy ? 'Working…' : 'Keep progress and delete'}
+							</button>
+							<button
+								class="button button-danger"
+								type="button"
+								onclick={() => deleteWithChoice(true)}
+								disabled={editor.busy}
+							>
+								Reset progress and delete
+							</button>
+							<button
+								class="button button-quiet"
+								type="button"
+								onclick={dismissDeleteConflict}
+							>
+								Cancel
+							</button>
+						</div>
+					</section>
+				{/if}
 
 				<div class="editor-actions">
 					<button
@@ -1102,6 +1365,11 @@
 		font-weight: 650;
 	}
 
+	.editor-hint {
+		margin: -0.7rem 0 1.2rem;
+		font-size: 0.85rem;
+	}
+
 	.section-name input,
 	.topic-heading input,
 	.topic-heading select,
@@ -1131,9 +1399,14 @@
 		background: #fbfcfa;
 	}
 
+	.topic-editor.dragging {
+		border-style: dashed;
+		opacity: 0.55;
+	}
+
 	.topic-heading {
 		display: grid;
-		grid-template-columns: 5.5rem minmax(12rem, 1fr) minmax(11rem, 0.7fr);
+		grid-template-columns: 2.4rem 4.7rem minmax(11rem, 1fr) minmax(10rem, 0.7fr) auto;
 		gap: 0.8rem;
 		align-items: end;
 		margin-bottom: 0.9rem;
@@ -1142,6 +1415,30 @@
 	.topic-heading h3 {
 		margin: 0 0 0.35rem;
 		font-size: 0.95rem;
+	}
+
+	.drag-handle {
+		align-self: end;
+		padding: 0.5rem 0.35rem;
+		border: 1px solid #cfd9ca;
+		border-radius: 9px;
+		background: #fff;
+		color: #5c6b60;
+		font: inherit;
+		cursor: grab;
+	}
+
+	.drag-handle:active {
+		cursor: grabbing;
+	}
+
+	.topic-delete {
+		align-self: end;
+		white-space: nowrap;
+	}
+
+	.editor-add {
+		margin: 0.2rem 0 0.6rem;
 	}
 
 	.topic-heading label {
