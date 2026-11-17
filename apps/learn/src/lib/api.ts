@@ -1,4 +1,4 @@
-import type { HomeResponse } from '@susanin/shared';
+import type { HomeResponse, SectionRun, Verdicts } from '@susanin/shared';
 import { telegramWebApp } from './telegram';
 
 export type HomeResult =
@@ -25,7 +25,18 @@ export async function loadLearnerHome(): Promise<HomeResult> {
 		}
 	}
 
-	const response = await fetch('/api/home', { credentials: 'same-origin' });
+	return loadHomeForSession();
+}
+
+/** Reads the home again over the existing session cookie, without re-authenticating. */
+export async function loadHomeForSession(): Promise<HomeResult> {
+	let response: Response;
+	try {
+		response = await fetch('/api/home', { credentials: 'same-origin' });
+	} catch {
+		return { status: 'unavailable' };
+	}
+
 	if (!response.ok) {
 		return {
 			status: response.status === 403 ? await authFailure(response) : 'unavailable'
@@ -33,6 +44,52 @@ export async function loadLearnerHome(): Promise<HomeResult> {
 	}
 
 	return { status: 'ready', home: (await response.json()) as HomeResponse };
+}
+
+export type SectionRunResult =
+	| { status: 'ready'; run: SectionRun }
+	| { status: 'empty'; run: SectionRun }
+	| { status: 'signed-out' | 'unavailable' };
+
+/** Loads one section's cards in route order; topics without gradeable fields are absent. */
+export async function loadSectionRun(sectionNumber: number): Promise<SectionRunResult> {
+	let response: Response;
+	try {
+		response = await fetch(`/api/sections/${sectionNumber}/cards`, {
+			credentials: 'same-origin'
+		});
+	} catch {
+		return { status: 'unavailable' };
+	}
+
+	if (!response.ok) {
+		return { status: response.status === 401 ? 'signed-out' : 'unavailable' };
+	}
+
+	const run = (await response.json()) as SectionRun;
+	return run.cards.length === 0 ? { status: 'empty', run } : { status: 'ready', run };
+}
+
+export type SaveProgressResult = 'ok' | 'rejected' | 'unavailable';
+
+/** Writes a whole card's verdicts; the API refuses anything partial. */
+export async function saveTopicProgress(
+	topicId: number,
+	verdicts: Verdicts
+): Promise<SaveProgressResult> {
+	try {
+		const response = await fetch(`/api/topics/${topicId}/progress`, {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({ verdicts }),
+			credentials: 'same-origin'
+		});
+
+		if (response.ok) return 'ok';
+		return response.status === 400 ? 'rejected' : 'unavailable';
+	} catch {
+		return 'unavailable';
+	}
 }
 
 async function post(path: string, body: unknown): Promise<Response> {

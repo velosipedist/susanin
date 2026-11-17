@@ -10,6 +10,7 @@ import { constantTimeEqual } from './constant-time';
 import type { SusaninDatabase } from './db';
 import { accounts } from './db/schema';
 import { loadHome } from './home';
+import { gradeTopic, loadSectionRun } from './runs';
 import {
 	chooseGroup,
 	findAccountById,
@@ -33,6 +34,10 @@ const inviteSchema = botUserSchema.extend({ code: z.string().min(1) });
 const groupSchema = z.object({ telegramId: z.number().int().positive(), group: z.enum(GROUPS) });
 
 const authSchema = z.object({ initData: z.string() });
+
+const verdictsSchema = z.object({
+	verdicts: z.record(z.string(), z.enum(['learned', 'unlearned']))
+});
 
 export function createApp({ db, config }: ApiContext): Hono {
 	const app = new Hono();
@@ -92,6 +97,60 @@ export function createApp({ db, config }: ApiContext): Hono {
 		}
 
 		return c.json(loadHome(db, account, account.groupName));
+	});
+
+	app.get('/api/sections/:number/cards', (c) => {
+		const account = sessionAccount(c, db, config);
+		if (!account) {
+			return c.json({ error: 'unauthorized' }, 401);
+		}
+
+		const sectionNumber = Number(c.req.param('number'));
+		if (!Number.isInteger(sectionNumber) || sectionNumber < 1) {
+			return c.json({ error: 'section-not-found' }, 404);
+		}
+
+		const run = loadSectionRun(db, sectionNumber);
+		if (!run) {
+			return c.json({ error: 'section-not-found' }, 404);
+		}
+
+		return c.json(run);
+	});
+
+	app.post('/api/topics/:topicId/progress', async (c) => {
+		const account = sessionAccount(c, db, config);
+		if (!account) {
+			return c.json({ error: 'unauthorized' }, 401);
+		}
+
+		const topicId = Number(c.req.param('topicId'));
+		if (!Number.isInteger(topicId) || topicId < 1) {
+			return c.json({ error: 'topic-not-found' }, 404);
+		}
+
+		const parsed = verdictsSchema.safeParse(await readJson(c.req.raw));
+		if (!parsed.success) {
+			return c.json({ error: 'invalid-verdicts' }, 400);
+		}
+
+		const result = gradeTopic(db, {
+			accountId: account.id,
+			topicId,
+			gradedAt: config.now(),
+			verdicts: parsed.data.verdicts
+		});
+
+		switch (result.status) {
+			case 'not-found':
+				return c.json({ error: 'topic-not-found' }, 404);
+			case 'no-fields':
+				return c.json({ error: 'no-gradeable-fields' }, 400);
+			case 'incomplete':
+				return c.json({ error: 'incomplete-card' }, 400);
+			default:
+				return c.json({ ok: true });
+		}
 	});
 
 	app.use('/api/bot/*', async (c, next) => {
