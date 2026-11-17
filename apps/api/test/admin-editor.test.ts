@@ -65,12 +65,16 @@ async function save(
 	api: TestApi,
 	cookie: string,
 	section: number,
-	draft: AdminSectionDraft
+	draft: AdminSectionDraft,
+	resetProgress?: boolean
 ): Promise<Response> {
 	return api.app.request(`/api/admin/sections/${section}`, {
 		method: 'PUT',
 		headers: { cookie, 'content-type': 'application/json' },
-		body: JSON.stringify(bodyFor(draft))
+		body: JSON.stringify({
+			...bodyFor(draft),
+			...(resetProgress === undefined ? {} : { resetProgress })
+		})
 	});
 }
 
@@ -380,6 +384,107 @@ describe('refusing a save that would invalidate progress', () => {
 		const stored = await draftFor(api, cookie);
 		expect(stored.topics[1].fields[2].text).toBe('A corrected where');
 		expect(stored.topics[0].fields[0].text).toBe(graded.fields[0].text);
+		api.close();
+	});
+});
+
+describe('choosing Keep or Reset after a refused save', () => {
+	async function conflictedDraft(api: TestApi, cookie: string) {
+		const draft = await draftFor(api, cookie);
+		draft.topics[0].fields[0].text = `${draft.topics[0].fields[0].text} corrected`;
+		const response = await save(api, cookie, 1, draft);
+		expect(response.status).toBe(409);
+		return draft;
+	}
+
+	it('writes the change on Keep and leaves every field state untouched', async () => {
+		const api = createAdminApi();
+		const cookie = await adminCookie(api);
+		const learnerOne = await cookieForLearner(api, LEARNER_ONE, 'A');
+		const learnerTwo = await cookieForLearner(api, LEARNER_TWO, 'A');
+		const draft = await draftFor(api, cookie);
+		await gradeTopic(api, learnerOne, draft.topics[0].id);
+		await gradeTopic(api, learnerTwo, draft.topics[0].id);
+
+		const conflicted = await conflictedDraft(api, cookie);
+		const response = await save(api, cookie, 1, conflicted, false);
+		expect(response.status).toBe(200);
+
+		const stored = await draftFor(api, cookie);
+		expect(stored.topics[0].fields[0].text).toBe(conflicted.topics[0].fields[0].text);
+		expect(api.db.select().from(fieldStates).all()).toHaveLength(12);
+		api.close();
+	});
+
+	it('writes the change on Reset and clears only the affected topics for every learner', async () => {
+		const api = createAdminApi();
+		const cookie = await adminCookie(api);
+		const learnerOne = await cookieForLearner(api, LEARNER_ONE, 'A');
+		const learnerTwo = await cookieForLearner(api, LEARNER_TWO, 'A');
+		const draft = await draftFor(api, cookie);
+		const affected = draft.topics[0];
+		const unaffected = draft.topics[1];
+		await gradeTopic(api, learnerOne, affected.id);
+		await gradeTopic(api, learnerOne, unaffected.id);
+		await gradeTopic(api, learnerTwo, affected.id);
+		await gradeTopic(api, learnerTwo, unaffected.id);
+		expect(api.db.select().from(fieldStates).all()).toHaveLength(24);
+
+		const conflicted = await conflictedDraft(api, cookie);
+		const response = await save(api, cookie, 1, conflicted, true);
+		expect(response.status).toBe(200);
+
+		const stored = await draftFor(api, cookie);
+		expect(stored.topics[0].fields[0].text).toBe(conflicted.topics[0].fields[0].text);
+
+		const remaining = api.db.select().from(fieldStates).all();
+		expect(remaining).toHaveLength(12);
+		expect(remaining.every((state) => state.topicId === unaffected.id)).toBe(true);
+
+		const home = await getHome(api, learnerOne);
+		const body = (await home.json()) as HomeResponse;
+		const sectionOne = body.sections.find((section) => section.number === 1);
+		expect(sectionOne).toMatchObject({ learned: 6, unlearned: 0, untouched: 12 });
+		api.close();
+	});
+
+	it('never prompts for a reorder, side change or section rename', async () => {
+		const api = createAdminApi();
+		const cookie = await adminCookie(api);
+		const learner = await cookieForLearner(api, LEARNER_ONE, 'A');
+		const draft = await draftFor(api, cookie);
+		await gradeTopic(api, learner, draft.topics[0].id);
+
+		draft.section.name = 'Renamed while graded';
+		draft.topics[0].side = 'right';
+		draft.topics = [...draft.topics].reverse();
+
+		const response = await save(api, cookie, 1, draft);
+		expect(response.status).toBe(200);
+
+		const stored = await draftFor(api, cookie);
+		expect(stored.section.name).toBe('Renamed while graded');
+		expect(stored.topics.map((topic) => topic.id)).toEqual(draft.topics.map((topic) => topic.id));
+		expect(api.db.select().from(fieldStates).all()).toHaveLength(6);
+		api.close();
+	});
+
+	it('rejects a reset choice that is not a boolean', async () => {
+		const api = createAdminApi();
+		const cookie = await adminCookie(api);
+		const draft = await draftFor(api, cookie);
+		draft.topics[0].fields[0].text = `${draft.topics[0].fields[0].text} corrected`;
+
+		const response = await api.app.request('/api/admin/sections/1', {
+			method: 'PUT',
+			headers: { cookie, 'content-type': 'application/json' },
+			body: JSON.stringify({ ...bodyFor(draft), resetProgress: 'yes' })
+		});
+
+		expect(response.status).toBe(400);
+		expect((await draftFor(api, cookie)).topics[0].fields[0].text).not.toBe(
+			draft.topics[0].fields[0].text
+		);
 		api.close();
 	});
 });

@@ -12,6 +12,7 @@ import {
 	type AdminSectionDraft,
 	type AdminSectionDraftBody,
 	type AdminSectionReview,
+	type AdminSectionSaveBody,
 	type AdminTopicDiff,
 	type FieldKey
 } from '@susanin/shared';
@@ -39,7 +40,8 @@ const topicDraftSchema = z.object({
 export const sectionDraftBodySchema = z
 	.object({
 		name: z.string().trim().min(1).max(200),
-		topics: z.array(topicDraftSchema).max(500)
+		topics: z.array(topicDraftSchema).max(500),
+		resetProgress: z.boolean().optional()
 	})
 	.superRefine((draft, ctx) => {
 		const seenIds = new Set<number>();
@@ -293,24 +295,30 @@ export type SaveSectionResult =
 
 /**
  * Diffs the full draft and writes it only when no changed topic carries a
- * verdict. A content change that somebody has already graded is refused with
- * the affected topics and learner count; nothing is written.
+ * verdict, or when the caller has explicitly chosen Keep or Reset after the
+ * 409. Reset removes the affected topics' verdicts for every account; Keep
+ * writes the content and leaves every verdict alone.
  */
 export function saveSectionDraft(
 	db: SusaninDatabase,
 	sectionNumber: number,
-	draft: AdminSectionDraftBody
+	draft: AdminSectionSaveBody
 ): SaveSectionResult {
 	const stored = loadSectionDraft(db, sectionNumber);
 	if (!stored) return { status: 'not-found' };
 	if (!draftMatchesStoredTopics(stored, draft)) return { status: 'invalid-topics' };
 
 	const review = reviewSectionDraft(db, stored, draft);
-	if (review.affectedTopicIds.length > 0) {
+	if (review.affectedTopicIds.length > 0 && draft.resetProgress === undefined) {
 		return { status: 'progress-affected', review };
 	}
 
-	writeSectionDraft(db, sectionNumber, draft);
+	writeSectionDraft(
+		db,
+		sectionNumber,
+		draft,
+		draft.resetProgress ? review.affectedTopicIds : []
+	);
 	const saved = loadSectionDraft(db, sectionNumber);
 	if (!saved) return { status: 'not-found' };
 
@@ -320,14 +328,22 @@ export function saveSectionDraft(
 /**
  * Writes a whole section in one transaction. Positions move through negatives
  * first so the unique (section, position) index never sees two equal values
- * during a reorder.
+ * during a reorder. When `resetTopicIds` is given, every verdict on those
+ * topics is deleted for every account in the same transaction.
  */
 export function writeSectionDraft(
 	db: SusaninDatabase,
 	sectionNumber: number,
-	draft: AdminSectionDraftBody
+	draft: AdminSectionDraftBody,
+	resetTopicIds: readonly number[] = []
 ): void {
 	db.transaction((tx) => {
+		if (resetTopicIds.length > 0) {
+			tx.delete(fieldStates)
+				.where(inArray(fieldStates.topicId, [...resetTopicIds]))
+				.run();
+		}
+
 		tx.update(sections)
 			.set({ name: draft.name })
 			.where(eq(sections.number, sectionNumber))

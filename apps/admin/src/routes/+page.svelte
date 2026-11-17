@@ -33,6 +33,7 @@
 	type EditorState = {
 		draft: AdminSectionDraft;
 		review: AdminSectionReview | null;
+		conflict: AdminProgressConflict | null;
 		error: string;
 		busy: boolean;
 	};
@@ -145,6 +146,7 @@
 		editor = {
 			draft: (await response.json()) as AdminSectionDraft,
 			review: null,
+			conflict: null,
 			error: '',
 			busy: false
 		};
@@ -157,12 +159,14 @@
 	function dismissReview(): void {
 		if (!editor) return;
 		editor.review = null;
+		editor.conflict = null;
 	}
 
 	/** Any edit after a review makes that review stale, so it is dropped. */
 	function invalidateReview(): void {
-		if (!editor || !editor.review) return;
+		if (!editor || (!editor.review && !editor.conflict)) return;
 		editor.review = null;
+		editor.conflict = null;
 		editor.error = '';
 	}
 
@@ -199,9 +203,15 @@
 		}
 
 		state.review = (await response.json()) as AdminSectionReview;
+		state.conflict = null;
 	}
 
-	async function saveDraft(): Promise<void> {
+	/**
+	 * Saves the reviewed draft. The optional choice answers the 409's question:
+	 * false keeps progress, true resets it. Without a choice the API refuses to
+	 * write while any changed topic carries a verdict.
+	 */
+	async function saveDraft(resetProgress?: boolean): Promise<void> {
 		const state = editor;
 		if (!state || state.busy) return;
 
@@ -209,10 +219,10 @@
 		state.busy = true;
 		state.error = '';
 
-		const response = await putApi(
-			`/api/admin/sections/${sectionNumber}`,
-			draftBody(state.draft)
-		);
+		const response = await putApi(`/api/admin/sections/${sectionNumber}`, {
+			...draftBody(state.draft),
+			...(resetProgress === undefined ? {} : { resetProgress })
+		});
 		state.busy = false;
 
 		if (!response) {
@@ -222,9 +232,9 @@
 
 		if (response.status === 409) {
 			const conflict = (await response.json()) as AdminProgressConflict;
-			state.error = `Not saved. ${conflict.affectedLearners} ${
-				conflict.affectedLearners === 1 ? 'learner has' : 'learners have'
-			} already graded the changed topics. Nothing has been written.`;
+			state.conflict = conflict;
+			state.review = conflict.review;
+			state.error = '';
 			return;
 		}
 
@@ -239,8 +249,19 @@
 		const saved = (await response.json()) as AdminSectionSaveResponse;
 		state.draft = saved.draft;
 		state.review = null;
+		state.conflict = null;
 		actionMessage = `Section ${sectionNumber} saved.`;
 		await refreshDashboard();
+	}
+
+	/** The names of the changed topics whose verdicts a Reset would clear. */
+	function conflictedTopics(state: EditorState): string[] {
+		const conflict = state.conflict;
+		if (!conflict) return [];
+		const ids = new Set(conflict.affectedTopicIds);
+		return conflict.review.topics
+			.filter((topic) => ids.has(topic.id))
+			.map((topic) => topic.previousName);
 	}
 
 	async function refreshDashboard(): Promise<void> {
@@ -541,28 +562,70 @@
 							</ul>
 						{/if}
 
-						{#if editor.review.affectedTopicIds.length > 0}
-							<p class="notice">
-								{editor.review.affectedLearners}
-								{editor.review.affectedLearners === 1 ? 'learner has' : 'learners have'}
-								graded the affected topics. Saving this change will be refused so progress is not
-								invalidated silently.
-							</p>
-						{/if}
+						{#if editor.conflict}
+							{@const affected = conflictedTopics(editor)}
+							<section class="choice-panel" aria-labelledby="choice-heading">
+								<h4 id="choice-heading">Keep or reset progress?</h4>
+								<p>
+									{editor.conflict.affectedLearners}
+									{editor.conflict.affectedLearners === 1
+										? 'learner has'
+										: 'learners have'}
+									graded {affected.length === 1 ? 'this topic' : 'these topics'}:
+									<strong>{affected.join(', ')}</strong>.
+								</p>
+								<p class="muted">
+									Nothing has been written yet. <strong>Keep</strong> preserves every verdict,
+									which will then certify the corrected text. <strong>Reset</strong> returns
+									every field of {affected.length === 1 ? 'this topic' : 'these topics'} to
+									Untouched for every learner, so they must be learned again.
+								</p>
+								<div class="editor-actions">
+									<button
+										class="button"
+										type="button"
+										onclick={() => void saveDraft(false)}
+										disabled={editor.busy}
+									>
+										{editor.busy ? 'Working…' : 'Keep progress'}
+									</button>
+									<button
+										class="button button-danger"
+										type="button"
+										onclick={() => void saveDraft(true)}
+										disabled={editor.busy}
+									>
+										Reset progress
+									</button>
+									<button class="button button-quiet" type="button" onclick={dismissReview}>
+										Back to editing
+									</button>
+								</div>
+							</section>
+						{:else}
+							{#if editor.review.affectedTopicIds.length > 0}
+								<p class="notice">
+									{editor.review.affectedLearners}
+									{editor.review.affectedLearners === 1 ? 'learner has' : 'learners have'}
+									graded the affected topics. Saving will ask whether to keep or reset their
+									progress before anything is written.
+								</p>
+							{/if}
 
-						<div class="editor-actions">
-							<button
-								class="button"
-								type="button"
-								onclick={() => void saveDraft()}
-								disabled={editor.busy}
-							>
-								Confirm save
-							</button>
-							<button class="button button-quiet" type="button" onclick={dismissReview}>
-								Back to editing
-							</button>
-						</div>
+							<div class="editor-actions">
+								<button
+									class="button"
+									type="button"
+									onclick={() => void saveDraft()}
+									disabled={editor.busy}
+								>
+									Confirm save
+								</button>
+								<button class="button button-quiet" type="button" onclick={dismissReview}>
+									Back to editing
+								</button>
+							</div>
+						{/if}
 					</section>
 				{/if}
 			</section>
@@ -787,6 +850,11 @@
 		border-color: #cfd9ca;
 		background: #fff;
 		color: #17211a;
+	}
+
+	.button-danger {
+		border-color: #a33a23;
+		background: #a33a23;
 	}
 
 	.summary {
@@ -1145,6 +1213,19 @@
 
 	.review-panel h3 {
 		margin: 0 0 0.6rem;
+	}
+
+	.choice-panel {
+		margin-top: 1rem;
+		padding: 0.9rem 1rem;
+		border: 1px solid #e3bdb3;
+		border-radius: 11px;
+		background: #fff6f3;
+	}
+
+	.choice-panel h4 {
+		margin: 0 0 0.45rem;
+		font-size: 0.95rem;
 	}
 
 	.review-panel p {

@@ -354,6 +354,14 @@ export type AdminSectionDraftBody = {
 	topics: AdminDraftTopic[];
 };
 
+/**
+ * A save after the 409 asked for a Keep/Reset choice. Omit `resetProgress`
+ * until the choice exists; the API refuses to write while progress is affected.
+ */
+export type AdminSectionSaveBody = AdminSectionDraftBody & {
+	resetProgress?: boolean;
+};
+
 /** One field whose stored text or not-applicable flag differs from the draft. */
 export type AdminFieldDiff = {
 	key: FieldKey;
