@@ -1,4 +1,4 @@
-import type { SectionProgress } from './fixture';
+import type { SectionProgress } from '@susanin/shared';
 
 export type SectionStats = SectionProgress & {
 	authored: number;

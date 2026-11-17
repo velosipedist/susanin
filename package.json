@@ -11,6 +11,7 @@
   },
   "scripts": {
     "dev": "pnpm --filter @susanin/learn dev",
+    "api": "pnpm --filter @susanin/api dev",
     "build": "pnpm --filter @susanin/learn build",
     "preview": "pnpm --filter @susanin/learn preview",
     "bot": "pnpm --filter @susanin/bot start",

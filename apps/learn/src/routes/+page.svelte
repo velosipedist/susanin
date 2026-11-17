@@ -1,17 +1,13 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { page } from '$app/state';
-	import { isGroup } from '@susanin/shared';
-	import { homeFixture } from '#lib/fixture';
+	import { loadLearnerHome, type HomeResult } from '#lib/api';
 	import { overallStats, sectionStats } from '#lib/home';
-	import { telegramFirstName, telegramWebApp } from '#lib/telegram';
+	import { telegramWebApp } from '#lib/telegram';
 
-	const previewName = 'Alex';
-
-	let telegramName = $state<string | null>(telegramFirstName());
+	let result = $state<HomeResult | null>(null);
 	let note = $state('');
 
-	onMount(() => {
+	onMount(async () => {
 		const telegram = telegramWebApp();
 
 		telegram?.ready();
@@ -19,18 +15,27 @@
 		telegram?.setHeaderColor?.('#f1f4ee');
 		telegram?.setBackgroundColor?.('#f1f4ee');
 
-		telegramName = telegramFirstName() ?? telegramName;
+		result = await loadLearnerHome();
 	});
 
-	const params = $derived(page.url.searchParams);
-	const requestedGroup = $derived(params.get('group'));
-	const group = $derived(isGroup(requestedGroup) ? requestedGroup : 'B');
-	const firstName = $derived(telegramName || params.get('name')?.trim() || previewName);
-
-	const home = $derived(homeFixture(group, firstName));
-	const overall = $derived(overallStats(home.sections));
-	const stops = $derived(home.sections.map(sectionStats));
+	const home = $derived(result?.status === 'ready' ? result.home : null);
+	const overall = $derived(home ? overallStats(home.sections) : null);
+	const stops = $derived(home ? home.sections.map(sectionStats) : []);
+	const firstName = $derived(home?.account.firstName ?? '');
+	const group = $derived(home?.account.group ?? '');
 	const longName = $derived(firstName.length > 15);
+
+	const message = $derived(
+		result === null
+			? 'Loading your tour…'
+			: result.status === 'onboarding-required'
+				? 'Join the tour with the invite code in the bot, then choose your group.'
+				: result.status === 'group-required'
+					? 'Choose your group in the bot before opening Susanin.'
+					: result.status === 'signed-out'
+						? 'Open Susanin from the Telegram bot to sign in.'
+						: 'Susanin is unavailable right now. Try again in a moment.'
+	);
 
 	function preview(label: string) {
 		note = `${label} is wired in the next build.`;
@@ -42,6 +47,7 @@
 	<meta name="theme-color" content="#f1f4ee" />
 </svelte:head>
 
+{#if home && overall}
 <main class="home">
 	<header class="hero">
 		<p class="eyebrow">Susanin · Group {group}</p>
@@ -140,8 +146,22 @@
 		<span class="entry-chevron" aria-hidden="true">›</span>
 	</button>
 </footer>
+{:else}
+<main class="status">
+	<p>{message}</p>
+</main>
+{/if}
 
 <style>
+	.status {
+		max-width: 430px;
+		margin: 0 auto;
+		padding: 4rem 1.5rem;
+		text-align: center;
+		color: #3c4a3f;
+		line-height: 1.5;
+	}
+
 	.home {
 		width: 100%;
 		max-width: 430px;

@@ -3,6 +3,7 @@ export type TelegramWebApp = {
 	expand(): void;
 	setHeaderColor?(color: string): void;
 	setBackgroundColor?(color: string): void;
+	initData: string;
 	initDataUnsafe?: {
 		user?: {
 			first_name?: string;

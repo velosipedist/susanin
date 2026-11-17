@@ -4,7 +4,11 @@ import { defineConfig } from 'vite';
 
 export default defineConfig({
 	// The dev server is reached through an HTTPS tunnel for phone testing.
-	server: { host: '0.0.0.0', allowedHosts: true },
+	server: {
+		host: '0.0.0.0',
+		allowedHosts: true,
+		proxy: { '/api': 'http://localhost:3000' }
+	},
 	preview: { host: '0.0.0.0', allowedHosts: true },
 	plugins: [
 		sveltekit({

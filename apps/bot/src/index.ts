@@ -1,31 +1,33 @@
-import { timingSafeEqual } from 'node:crypto';
 import { GROUPS, isGroup, type Group } from '@susanin/shared';
 import { loadConfig, type Config } from './config';
+import { SusaninService } from './service';
 import {
 	TelegramApi,
 	TelegramError,
 	type InlineKeyboardMarkup,
 	type TelegramCallbackQuery,
-	type TelegramUpdate
+	type TelegramUpdate,
+	type TelegramUser
 } from './telegram';
 
 const config = loadConfigOrExit();
 
 const api = new TelegramApi(config.apiBase, config.token);
+const service = new SusaninService(config.serviceUrl, config.serviceSecret);
 
 type Stage = 'awaiting-invite' | 'choosing-group' | 'ready';
 
+/**
+ * Local UI state only: which message the bot should edit in place. Account
+ * membership and group live in the API, so a restart never asks a known
+ * account for the invite code again.
+ */
 type ChatState = {
 	stage: Stage;
 	group?: Group;
-	/** The one message whose buttons the bot edits in place. */
 	panelId?: number;
 };
 
-/**
- * The demo keeps every account in memory. Restarting the process forgets
- * verified accounts and chosen groups, as intended until issue #3 adds SQLite.
- */
 const chats = new Map<number, ChatState>();
 
 const welcomeText = `Welcome to Susanin.
@@ -34,6 +36,11 @@ Send the invite code you were given to join the tour.`;
 
 const wrongCodeText = 'That invite code is not right. Check it and try again.';
 
+const rateLimitedText =
+	'Too many wrong invite codes. Try again in an hour, or ask for the right code.';
+
+const serviceDownText = 'Susanin is unavailable right now. Try again in a moment.';
+
 function stateFor(chatId: number): ChatState {
 	let state = chats.get(chatId);
 	if (!state) {
@@ -41,13 +48,6 @@ function stateFor(chatId: number): ChatState {
 		chats.set(chatId, state);
 	}
 	return state;
-}
-
-function matchesInvite(candidate: string): boolean {
-	const given = Buffer.from(candidate);
-	const expected = Buffer.from(config.inviteCode);
-	if (given.length !== expected.length) return false;
-	return timingSafeEqual(given, expected);
 }
 
 function groupKeyboard(current?: Group): InlineKeyboardMarkup {
@@ -61,13 +61,10 @@ function groupKeyboard(current?: Group): InlineKeyboardMarkup {
 	};
 }
 
-function openKeyboard(group: Group): InlineKeyboardMarkup {
-	const url = new URL(config.webAppUrl);
-	url.searchParams.set('group', group);
-
+function openKeyboard(): InlineKeyboardMarkup {
 	return {
 		inline_keyboard: [
-			[{ text: 'Open Susanin', web_app: { url: url.toString() } }],
+			[{ text: 'Open Susanin', web_app: { url: config.webAppUrl } }],
 			[{ text: 'Change group', callback_data: 'change-group' }]
 		]
 	};
@@ -126,37 +123,67 @@ async function showReady(chatId: number, state: ChatState, group: Group): Promis
 		chatId,
 		state,
 		`Group ${group} selected.\n\nTap Open Susanin to start studying.`,
-		openKeyboard(group)
+		openKeyboard()
 	);
 }
 
-async function handleStart(chatId: number, state: ChatState): Promise<void> {
-	if (state.stage === 'ready' && state.group) {
-		await showReady(chatId, state, state.group);
-		return;
-	}
+async function handleStart(
+	chatId: number,
+	state: ChatState,
+	from: TelegramUser | undefined
+): Promise<void> {
+	try {
+		const result = await service.start({
+			telegramId: from?.id ?? chatId,
+			firstName: from?.first_name ?? 'Learner'
+		});
 
-	if (state.stage === 'choosing-group') {
-		await showGroupChoice(chatId, state, 'Choose your group.');
-		return;
-	}
+		if (result.stage === 'ready' && result.group) {
+			await showReady(chatId, state, result.group);
+			return;
+		}
 
-	state.stage = 'awaiting-invite';
-	await sendPanel(chatId, state, welcomeText);
+		if (result.stage === 'choosing-group') {
+			await showGroupChoice(chatId, state, 'Choose your group.');
+			return;
+		}
+
+		state.stage = 'awaiting-invite';
+		await sendPanel(chatId, state, welcomeText);
+	} catch (error) {
+		await reportServiceFailure(chatId, error);
+	}
 }
 
-async function handleMessage(chatId: number, state: ChatState, text: string): Promise<void> {
+async function handleMessage(
+	chatId: number,
+	state: ChatState,
+	text: string,
+	from: TelegramUser | undefined
+): Promise<void> {
 	if (isStartCommand(text)) {
-		await handleStart(chatId, state);
+		await handleStart(chatId, state, from);
 		return;
 	}
 
 	switch (state.stage) {
 		case 'awaiting-invite':
-			if (matchesInvite(text)) {
-				await showGroupChoice(chatId, state, 'You are in. Choose your group.');
-			} else {
-				await sendText(chatId, wrongCodeText);
+			try {
+				const result = await service.invite({
+					telegramId: from?.id ?? chatId,
+					firstName: from?.first_name ?? 'Learner',
+					code: text
+				});
+
+				if (result === 'joined' || result === 'already-member') {
+					await showGroupChoice(chatId, state, 'You are in. Choose your group.');
+				} else if (result === 'rate-limited') {
+					await sendText(chatId, rateLimitedText);
+				} else {
+					await sendText(chatId, wrongCodeText);
+				}
+			} catch (error) {
+				await reportServiceFailure(chatId, error);
 			}
 			break;
 		case 'choosing-group':
@@ -173,10 +200,11 @@ async function handleCallback(query: TelegramCallbackQuery): Promise<void> {
 	if (chatId === undefined) return;
 
 	const data = query.data ?? '';
+	const state = stateFor(chatId);
 
 	if (data === 'change-group') {
 		await answerCallback(query.id);
-		await showGroupChoice(chatId, stateFor(chatId), 'Choose a different group.');
+		await showGroupChoice(chatId, state, 'Choose a different group.');
 		return;
 	}
 
@@ -188,8 +216,34 @@ async function handleCallback(query: TelegramCallbackQuery): Promise<void> {
 		return;
 	}
 
-	await answerCallback(query.id, `Group ${group}`);
-	await showReady(chatId, stateFor(chatId), group);
+	try {
+		const known = await service.chooseGroup({
+			telegramId: query.from.id,
+			group
+		});
+
+		if (!known) {
+			state.stage = 'awaiting-invite';
+			await sendPanel(chatId, state, welcomeText);
+			await answerCallback(query.id, 'Send the invite code first.');
+			return;
+		}
+
+		await answerCallback(query.id, `Group ${group}`);
+		await showReady(chatId, state, group);
+	} catch (error) {
+		await answerCallback(query.id, 'Could not save your group.');
+		await reportServiceFailure(chatId, error);
+	}
+}
+
+async function reportServiceFailure(chatId: number, error: unknown): Promise<void> {
+	console.error(`Susanin API call failed: ${describe(error)}`);
+	try {
+		await sendText(chatId, serviceDownText);
+	} catch (sendError) {
+		console.error(`Could not tell chat ${chatId} about the failure: ${describe(sendError)}`);
+	}
 }
 
 async function answerCallback(id: string, text?: string): Promise<void> {
@@ -214,7 +268,7 @@ async function handleUpdate(update: TelegramUpdate): Promise<void> {
 		const text = message.text?.trim() ?? '';
 		if (!text) return;
 
-		await handleMessage(message.chat.id, stateFor(message.chat.id), text);
+		await handleMessage(message.chat.id, stateFor(message.chat.id), text, message.from);
 		return;
 	}
 
@@ -258,6 +312,7 @@ async function poll(): Promise<void> {
 	}
 
 	console.log(`Susanin bot polling ${config.apiBase}`);
+	console.log(`Susanin API: ${config.serviceUrl}`);
 	console.log(`Mini App URL: ${config.webAppUrl}`);
 
 	while (!stopping) {

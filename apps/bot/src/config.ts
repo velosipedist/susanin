@@ -1,16 +1,19 @@
 export type Config = {
 	/** BotFather token; also used by a local Bot API server. */
 	token: string;
-	/** Root of the Bot API, e.g. http://localhost:8081 or https://api.telegram.org. */
+	/** Root of the Telegram Bot API, e.g. http://localhost:8081 or https://api.telegram.org. */
 	apiBase: string;
-	inviteCode: string;
-	/** Mini App URL; the bot appends ?group=A..E. */
+	/** Root of the Susanin API that owns accounts, groups and content. */
+	serviceUrl: string;
+	/** Shared secret the bot presents to the Susanin API's internal routes. */
+	serviceSecret: string;
+	/** Mini App URL. */
 	webAppUrl: string;
 };
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
 	const token = required(env, 'TELEGRAM_BOT_TOKEN');
-	const inviteCode = required(env, 'INVITE_CODE');
+	const serviceSecret = required(env, 'BOT_API_SECRET');
 	const webAppUrl = required(env, 'WEBAPP_URL');
 
 	let parsed: URL;
@@ -29,7 +32,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
 	return {
 		token,
 		apiBase: (env.TELEGRAM_API_BASE?.trim() || 'http://localhost:8081').replace(/\/+$/, ''),
-		inviteCode,
+		serviceUrl: (env.API_URL?.trim() || 'http://localhost:3000').replace(/\/+$/, ''),
+		serviceSecret,
 		webAppUrl: parsed.toString()
 	};
 }

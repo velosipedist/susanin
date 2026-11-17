@@ -1,0 +1,469 @@
+{
+  "version": "6",
+  "dialect": "sqlite",
+  "id": "bc9f7ba9-a35a-4fdc-97dc-899399fb6b5c",
+  "prevId": "00000000-0000-0000-0000-000000000000",
+  "tables": {
+    "accounts": {
+      "name": "accounts",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "telegram_id": {
+          "name": "telegram_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "display_name": {
+          "name": "display_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "group_name": {
+          "name": "group_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "is_admin": {
+          "name": "is_admin",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "accounts_telegram_id_unique": {
+          "name": "accounts_telegram_id_unique",
+          "columns": [
+            "telegram_id"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "accounts_group_name_groups_name_fk": {
+          "name": "accounts_group_name_groups_name_fk",
+          "tableFrom": "accounts",
+          "tableTo": "groups",
+          "columnsFrom": [
+            "group_name"
+          ],
+          "columnsTo": [
+            "name"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "field_states": {
+      "name": "field_states",
+      "columns": {
+        "account_id": {
+          "name": "account_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "topic_id": {
+          "name": "topic_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "field_key": {
+          "name": "field_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "value": {
+          "name": "value",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "graded_at": {
+          "name": "graded_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "field_states_account_id_accounts_id_fk": {
+          "name": "field_states_account_id_accounts_id_fk",
+          "tableFrom": "field_states",
+          "tableTo": "accounts",
+          "columnsFrom": [
+            "account_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "field_states_topic_id_field_key_topic_fields_topic_id_key_fk": {
+          "name": "field_states_topic_id_field_key_topic_fields_topic_id_key_fk",
+          "tableFrom": "field_states",
+          "tableTo": "topic_fields",
+          "columnsFrom": [
+            "topic_id",
+            "field_key"
+          ],
+          "columnsTo": [
+            "topic_id",
+            "key"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "field_states_account_id_topic_id_field_key_pk": {
+          "columns": [
+            "account_id",
+            "topic_id",
+            "field_key"
+          ],
+          "name": "field_states_account_id_topic_id_field_key_pk"
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "field_states_value_check": {
+          "name": "field_states_value_check",
+          "value": "\"field_states\".\"value\" IN ('learned', 'unlearned')"
+        }
+      }
+    },
+    "group_sections": {
+      "name": "group_sections",
+      "columns": {
+        "group_name": {
+          "name": "group_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "section_number": {
+          "name": "section_number",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "group_sections_section_unique": {
+          "name": "group_sections_section_unique",
+          "columns": [
+            "section_number"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "group_sections_group_name_groups_name_fk": {
+          "name": "group_sections_group_name_groups_name_fk",
+          "tableFrom": "group_sections",
+          "tableTo": "groups",
+          "columnsFrom": [
+            "group_name"
+          ],
+          "columnsTo": [
+            "name"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "group_sections_section_number_sections_number_fk": {
+          "name": "group_sections_section_number_sections_number_fk",
+          "tableFrom": "group_sections",
+          "tableTo": "sections",
+          "columnsFrom": [
+            "section_number"
+          ],
+          "columnsTo": [
+            "number"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "group_sections_group_name_section_number_pk": {
+          "columns": [
+            "group_name",
+            "section_number"
+          ],
+          "name": "group_sections_group_name_section_number_pk"
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "groups": {
+      "name": "groups",
+      "columns": {
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "invite_attempts": {
+      "name": "invite_attempts",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "telegram_id": {
+          "name": "telegram_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "attempted_at": {
+          "name": "attempted_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "invite_attempts_lookup": {
+          "name": "invite_attempts_lookup",
+          "columns": [
+            "telegram_id",
+            "attempted_at"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "sections": {
+      "name": "sections",
+      "columns": {
+        "number": {
+          "name": "number",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "topic_fields": {
+      "name": "topic_fields",
+      "columns": {
+        "topic_id": {
+          "name": "topic_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "key": {
+          "name": "key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "text": {
+          "name": "text",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "''"
+        },
+        "not_applicable": {
+          "name": "not_applicable",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "topic_fields_topic_id_topics_id_fk": {
+          "name": "topic_fields_topic_id_topics_id_fk",
+          "tableFrom": "topic_fields",
+          "tableTo": "topics",
+          "columnsFrom": [
+            "topic_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "topic_fields_topic_id_key_pk": {
+          "columns": [
+            "topic_id",
+            "key"
+          ],
+          "name": "topic_fields_topic_id_key_pk"
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "topic_fields_key_check": {
+          "name": "topic_fields_key_check",
+          "value": "\"topic_fields\".\"key\" IN ('what', 'when', 'where', 'why', 'who', 'how')"
+        }
+      }
+    },
+    "topics": {
+      "name": "topics",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "section_number": {
+          "name": "section_number",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "position": {
+          "name": "position",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "side": {
+          "name": "side",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "topics_section_position_unique": {
+          "name": "topics_section_position_unique",
+          "columns": [
+            "section_number",
+            "position"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "topics_section_number_sections_number_fk": {
+          "name": "topics_section_number_sections_number_fk",
+          "tableFrom": "topics",
+          "tableTo": "sections",
+          "columnsFrom": [
+            "section_number"
+          ],
+          "columnsTo": [
+            "number"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "topics_side_check": {
+          "name": "topics_side_check",
+          "value": "\"topics\".\"side\" IS NULL OR \"topics\".\"side\" IN ('left', 'supplementary', 'right')"
+        }
+      }
+    }
+  },
+  "views": {},
+  "enums": {},
+  "_meta": {
+    "schemas": {},
+    "tables": {},
+    "columns": {}
+  },
+  "internal": {
+    "indexes": {}
+  }
+}
