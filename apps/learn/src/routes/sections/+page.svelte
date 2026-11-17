@@ -3,17 +3,13 @@
 	import { resolve } from '$app/paths';
 	import { loadSectionList, type SectionListResult } from '#lib/api';
 	import { sectionStats } from '#lib/home';
-	import { telegramWebApp } from '#lib/telegram';
+	import { statusMessage } from '#lib/status';
+	import { initTelegram, PAGE_COLOR } from '#lib/telegram';
 
 	let result = $state<SectionListResult | null>(null);
 
 	onMount(async () => {
-		const telegram = telegramWebApp();
-
-		telegram?.ready();
-		telegram?.expand();
-		telegram?.setHeaderColor?.('#f1f4ee');
-		telegram?.setBackgroundColor?.('#f1f4ee');
+		initTelegram();
 
 		result = await loadSectionList();
 	});
@@ -23,28 +19,12 @@
 	const group = $derived(list?.account.group ?? '');
 	const inScopeCount = $derived(rows.filter((row) => row.inScope).length);
 
-	const message = $derived(statusMessage(result));
-
-	function statusMessage(current: SectionListResult | null): string {
-		if (!current) return 'Loading all sections…';
-
-		switch (current.status) {
-			case 'onboarding-required':
-				return 'Join the tour with the invite code in the bot, then choose your group.';
-			case 'group-required':
-				return 'Choose your group in the bot before opening Susanin.';
-			case 'signed-out':
-				return 'Open Susanin from the Telegram bot to sign in.';
-			case 'ready':
-			case 'unavailable':
-				return 'Susanin is unavailable right now. Try again in a moment.';
-		}
-	}
+	const message = $derived(statusMessage(result?.status ?? null, 'Loading all sections…'));
 </script>
 
 <svelte:head>
 	<title>Susanin · All sections</title>
-	<meta name="theme-color" content="#f1f4ee" />
+	<meta name="theme-color" content={PAGE_COLOR} />
 </svelte:head>
 
 {#if list}

@@ -22,7 +22,8 @@
 	} from '#lib/api';
 	import { fieldLabel, sideLabel } from '#lib/card';
 	import { overallStats, sectionStats } from '#lib/home';
-	import { telegramWebApp } from '#lib/telegram';
+	import { statusMessage } from '#lib/status';
+	import { initTelegram, PAGE_COLOR } from '#lib/telegram';
 
 	type NavAction = 'next' | 'back' | 'exit';
 
@@ -41,12 +42,7 @@
 	let pendingAction = $state<NavAction | null>(null);
 
 	onMount(async () => {
-		const telegram = telegramWebApp();
-
-		telegram?.ready();
-		telegram?.expand();
-		telegram?.setHeaderColor?.('#f1f4ee');
-		telegram?.setBackgroundColor?.('#f1f4ee');
+		initTelegram();
 
 		result = await loadLearnerHome();
 
@@ -64,7 +60,7 @@
 	const group = $derived(home?.account.group ?? '');
 	const longName = $derived(firstName.length > 15);
 
-	const message = $derived(statusMessage(result));
+	const message = $derived(statusMessage(result?.status ?? null, 'Loading your tour…'));
 
 	const card = $derived(run ? (run.cards[cardIndex] ?? null) : null);
 	const cardFields = $derived(card?.fields ?? []);
@@ -76,22 +72,6 @@
 	const gradedCount = $derived(
 		cardFields.filter((field) => isFieldStateValue(verdicts[field.key])).length
 	);
-
-	function statusMessage(current: HomeResult | null): string {
-		if (!current) return 'Loading your tour…';
-
-		switch (current.status) {
-			case 'onboarding-required':
-				return 'Join the tour with the invite code in the bot, then choose your group.';
-			case 'group-required':
-				return 'Choose your group in the bot before opening Susanin.';
-			case 'signed-out':
-				return 'Open Susanin from the Telegram bot to sign in.';
-			case 'ready':
-			case 'unavailable':
-				return 'Susanin is unavailable right now. Try again in a moment.';
-		}
-	}
 
 	/** The section requested by a row on the full list screen, if any. */
 	function requestedSection(): number | null {
@@ -278,7 +258,7 @@
 
 <svelte:head>
 	<title>Susanin · Group {group}</title>
-	<meta name="theme-color" content="#f1f4ee" />
+	<meta name="theme-color" content={PAGE_COLOR} />
 </svelte:head>
 
 {#if run && card}

@@ -8,7 +8,7 @@ import type {
 } from '@susanin/shared';
 import { telegramWebApp } from './telegram';
 
-type SessionStatus = 'onboarding-required' | 'group-required' | 'signed-out' | 'unavailable';
+export type SessionStatus = 'onboarding-required' | 'group-required' | 'signed-out' | 'unavailable';
 
 export type HomeResult =
 	| { status: 'ready'; home: HomeResponse }

@@ -1,10 +1,12 @@
 import { createHmac } from 'node:crypto';
+import { eq } from 'drizzle-orm';
 import type { Hono } from 'hono';
 import type { Group } from '@susanin/shared';
 import { createApp } from '../src/app';
 import { type ApiConfig } from '../src/config';
 import { openDatabase, type SusaninDatabase } from '../src/db';
 import { seedContent } from '../src/db/seed';
+import { topics } from '../src/db/schema';
 
 export const BASE_NOW = Date.UTC(2026, 4, 1, 12, 0, 0);
 
@@ -159,4 +161,20 @@ export async function cookieForLearner(
 	await onboardLearner(api, { telegramId, firstName, group });
 	const { cookie } = await signIn(api, { telegramId, firstName });
 	return cookie;
+}
+
+/** Finds the seeded topic at one route position in a section. */
+export function topicIn(api: TestApi, sectionNumber: number, position: number) {
+	const topic = api.db
+		.select()
+		.from(topics)
+		.where(eq(topics.sectionNumber, sectionNumber))
+		.all()
+		.find((candidate) => candidate.position === position);
+
+	if (!topic) {
+		throw new Error(`No topic at section ${sectionNumber}, position ${position}.`);
+	}
+
+	return topic;
 }

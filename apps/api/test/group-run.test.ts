@@ -1,4 +1,3 @@
-import { eq } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import {
 	buildRun,
@@ -8,25 +7,14 @@ import {
 	type Run,
 	type RunSectionInput
 } from '@susanin/shared';
-import { accounts, topics } from '../src/db/schema';
+import { accounts } from '../src/db/schema';
 import { writeTopicFieldStates } from '../src/store/field-states';
-import { cookieForLearner, createTestApi, type TestApi } from './helpers';
+import { cookieForLearner, createTestApi, topicIn, type TestApi } from './helpers';
 
 async function runFor(api: TestApi, cookie: string, kind: GroupRunKind): Promise<Run> {
 	const response = await api.app.request(`/api/runs/${kind}`, { headers: { cookie } });
 	expect(response.status).toBe(200);
 	return (await response.json()) as Run;
-}
-
-function topicIn(api: TestApi, sectionNumber: number, position: number) {
-	const topic = api.db
-		.select()
-		.from(topics)
-		.where(eq(topics.sectionNumber, sectionNumber))
-		.all()
-		.find((candidate) => candidate.position === position);
-	expect(topic).toBeDefined();
-	return topic!;
 }
 
 describe('group runs over HTTP', () => {

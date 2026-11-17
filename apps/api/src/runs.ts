@@ -9,6 +9,7 @@ import {
 	verdictsMatchCard,
 	type CardFieldInput,
 	type FieldKey,
+	type Group,
 	type GroupRunKind,
 	type Run,
 	type RunSectionInput,
@@ -19,14 +20,6 @@ import {
 import type { SusaninDatabase } from './db';
 import { fieldStates, groupSections, sections, topicFields, topics } from './db/schema';
 import { writeTopicFieldStates } from './store/field-states';
-
-type TopicAccumulator = {
-	id: number;
-	position: number;
-	name: string;
-	side: TopicInput['side'];
-	fields: CardFieldInput[];
-};
 
 type TopicFieldRow = {
 	key: string | null;
@@ -41,6 +34,17 @@ type TopicRow = TopicFieldRow & {
 	side: string | null;
 };
 
+/** The joined columns shared by a section's route and a whole group's run. */
+const topicFieldColumns = {
+	topicId: topics.id,
+	position: topics.position,
+	name: topics.name,
+	side: topics.side,
+	key: topicFields.key,
+	text: topicFields.text,
+	notApplicable: topicFields.notApplicable
+};
+
 /** Maps a joined topic-field row to a card field, or null when the join found none. */
 function toCardFieldInput(row: TopicFieldRow): CardFieldInput | null {
 	if (!isFieldKey(row.key)) return null;
@@ -53,7 +57,7 @@ function toCardFieldInput(row: TopicFieldRow): CardFieldInput | null {
 }
 
 /** Adds one joined row's field to its topic, creating the topic on first sight. */
-function addTopicFieldRow(byTopic: Map<number, TopicAccumulator>, row: TopicRow): void {
+function addTopicFieldRow(byTopic: Map<number, TopicInput>, row: TopicRow): void {
 	if (row.topicId === null) return;
 
 	let topic = byTopic.get(row.topicId);
@@ -85,22 +89,14 @@ export function loadSectionRun(
 	if (!section) return undefined;
 
 	const rows = db
-		.select({
-			topicId: topics.id,
-			position: topics.position,
-			name: topics.name,
-			side: topics.side,
-			key: topicFields.key,
-			text: topicFields.text,
-			notApplicable: topicFields.notApplicable
-		})
+		.select(topicFieldColumns)
 		.from(topics)
 		.leftJoin(topicFields, eq(topicFields.topicId, topics.id))
 		.where(eq(topics.sectionNumber, sectionNumber))
 		.orderBy(topics.position)
 		.all();
 
-	const byTopic = new Map<number, TopicAccumulator>();
+	const byTopic = new Map<number, TopicInput>();
 	for (const row of rows) addTopicFieldRow(byTopic, row);
 
 	return buildSectionRun(section, [...byTopic.values()]);
@@ -108,7 +104,7 @@ export function loadSectionRun(
 
 type SectionAccumulator = {
 	section: { number: number; name: string };
-	topics: Map<number, TopicAccumulator>;
+	topics: Map<number, TopicInput>;
 };
 
 /**
@@ -118,19 +114,13 @@ type SectionAccumulator = {
  */
 export function loadGroupRun(
 	db: SusaninDatabase,
-	input: { accountId: number; group: string; kind: GroupRunKind }
+	input: { accountId: number; group: Group; kind: GroupRunKind }
 ): Run {
 	const rows = db
 		.select({
 			sectionNumber: sections.number,
 			sectionName: sections.name,
-			topicId: topics.id,
-			position: topics.position,
-			name: topics.name,
-			side: topics.side,
-			key: topicFields.key,
-			text: topicFields.text,
-			notApplicable: topicFields.notApplicable
+			...topicFieldColumns
 		})
 		.from(sections)
 		.innerJoin(groupSections, eq(groupSections.sectionNumber, sections.number))
@@ -157,13 +147,14 @@ export function loadGroupRun(
 
 	const unlearnedByTopic = loadUnlearnedFields(db, input.accountId);
 
-	const summaries = [...bySection.values()].map((accumulator) => ({
+	const accumulators = [...bySection.values()];
+	const summaries = accumulators.map((accumulator) => ({
 		number: accumulator.section.number,
 		unlearned: countUnlearned(accumulator, unlearnedByTopic)
 	}));
 
 	const selected = new Set(selectedSectionNumbers(input.kind, summaries));
-	const runSections: RunSectionInput[] = [...bySection.values()]
+	const runSections: RunSectionInput[] = accumulators
 		.filter((accumulator) => selected.has(accumulator.section.number))
 		.map((accumulator) => ({
 			section: accumulator.section,

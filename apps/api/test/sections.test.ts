@@ -3,23 +3,12 @@ import { describe, expect, it } from 'vitest';
 import type { SectionListResponse } from '@susanin/shared';
 import { accounts, topicFields, topics } from '../src/db/schema';
 import { writeTopicFieldStates } from '../src/store/field-states';
-import { cookieForLearner, createTestApi, type TestApi } from './helpers';
+import { cookieForLearner, createTestApi, topicIn, type TestApi } from './helpers';
 
 async function listFor(api: TestApi, cookie: string): Promise<SectionListResponse> {
 	const response = await api.app.request('/api/sections', { headers: { cookie } });
 	expect(response.status).toBe(200);
 	return (await response.json()) as SectionListResponse;
-}
-
-function topicIn(api: TestApi, sectionNumber: number, position: number) {
-	const topic = api.db
-		.select()
-		.from(topics)
-		.where(eq(topics.sectionNumber, sectionNumber))
-		.all()
-		.find((candidate) => candidate.position === position);
-	expect(topic).toBeDefined();
-	return topic!;
 }
 
 describe('all sections list over HTTP', () => {

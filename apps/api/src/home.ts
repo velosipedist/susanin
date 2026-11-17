@@ -120,7 +120,7 @@ export function loadSectionList(
 	account: { id: number; displayName: string },
 	group: Group
 ): SectionListResponse {
-	const sections: SectionListItem[] = [
+	const items: SectionListItem[] = [
 		...accumulateProgress(loadProgressRows(db, account.id)).values()
 	].map(({ progress, groupName }) => ({
 		...progress,
@@ -132,6 +132,6 @@ export function loadSectionList(
 			firstName: account.displayName,
 			group
 		},
-		sections: sortByNumber(sections)
+		sections: sortByNumber(items)
 	};
 }
