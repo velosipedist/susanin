@@ -1,0 +1,19 @@
+{
+	"name": "@susanin/bot",
+	"version": "0.0.0",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"start": "node --env-file-if-exists=../../.env --import tsx src/index.ts",
+		"dev": "node --env-file-if-exists=../../.env --watch --import tsx src/index.ts",
+		"typecheck": "tsc --noEmit"
+	},
+	"dependencies": {
+		"@susanin/shared": "workspace:*"
+	},
+	"devDependencies": {
+		"@types/node": "^26.6.6",
+		"tsx": "^4.23.15",
+		"typescript": "^6.0.3"
+	}
+}
