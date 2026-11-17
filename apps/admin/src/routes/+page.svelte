@@ -35,7 +35,7 @@
 	});
 
 	async function load(): Promise<void> {
-		const session = await fetchApi('/api/admin/session');
+		const session = await request('/api/admin/session');
 		if (!session) {
 			view = { status: 'unavailable' };
 			return;
@@ -57,7 +57,7 @@
 			return;
 		}
 
-		const dashboard = await fetchApi('/api/admin/dashboard');
+		const dashboard = await request('/api/admin/dashboard');
 		if (!dashboard) {
 			view = { status: 'unavailable' };
 			return;
@@ -73,8 +73,8 @@
 			return;
 		}
 
-		const cohort = await fetchApi('/api/admin/cohort');
-		const people = await fetchApi('/api/admin/people');
+		const cohort = await request('/api/admin/cohort');
+		const people = await request('/api/admin/people');
 		if (!cohort || !people || !cohort.ok || !people.ok) {
 			view = { status: 'unavailable' };
 			return;
@@ -90,9 +90,9 @@
 	}
 
 	/** GETs an API path; null means the request could not be made at all. */
-	async function fetchApi(path: string): Promise<Response | null> {
+	async function request(path: string, init: RequestInit = {}): Promise<Response | null> {
 		try {
-			return await fetch(path, { credentials: 'same-origin' });
+			return await fetch(path, { credentials: 'same-origin', ...init });
 		} catch {
 			return null;
 		}
@@ -100,16 +100,11 @@
 
 	/** PUTs JSON to an API path; null means the request could not be made at all. */
 	async function putApi(path: string, body: unknown): Promise<Response | null> {
-		try {
-			return await fetch(path, {
-				method: 'PUT',
-				credentials: 'same-origin',
-				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify(body)
-			});
-		} catch {
-			return null;
-		}
+		return request(path, {
+			method: 'PUT',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify(body)
+		});
 	}
 
 	async function assignSectionGroup(sectionNumber: number, value: string): Promise<void> {

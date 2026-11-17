@@ -1,15 +1,18 @@
 import { eq, sql } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
-import type { AdminCohortResponse, AdminPeopleResponse, HomeResponse } from '@susanin/shared';
+import type {
+	AdminCohortResponse,
+	AdminPeopleResponse,
+	Group,
+	HomeResponse
+} from '@susanin/shared';
 import { accounts, fieldStates, groupSections, topics } from '../src/db/schema';
 import { seedContent } from '../src/db/seed';
 import { writeTopicFieldStates } from '../src/store/field-states';
-import { createTestApi, getHome, onboardLearner, signIn } from './helpers';
+import { createTestApi, getHome, onboardLearner, signIn, type TestApi } from './helpers';
 
 const ADMIN_TELEGRAM_ID = 9001;
 const LEARNER_TELEGRAM_ID = 9002;
-
-type TestApi = ReturnType<typeof createTestApi>;
 
 function put(
 	api: TestApi,
@@ -39,7 +42,7 @@ async function adminSession(api: TestApi): Promise<string> {
 
 async function learnerSession(
 	api: TestApi,
-	input: { telegramId?: number; firstName?: string; group: 'A' | 'B' | 'C' | 'D' | 'E' }
+	input: { telegramId?: number; firstName?: string; group: Group }
 ): Promise<string> {
 	const telegramId = input.telegramId ?? LEARNER_TELEGRAM_ID;
 	const firstName = input.firstName ?? 'Mei';

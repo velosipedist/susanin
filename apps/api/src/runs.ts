@@ -109,8 +109,9 @@ type SectionAccumulator = {
 
 /**
  * Reads every section in a group, then flattens the selected ones into one run.
- * Learn new takes all five; Repeat takes only sections where the account still
- * has an Unlearned field. Empty and not-applicable fields never count as gaps.
+ * Learn new takes every section; Repeat takes only sections where the account
+ * still has an Unlearned field. Empty and not-applicable fields never count as
+ * gaps.
  */
 export function loadGroupRun(
 	db: SusaninDatabase,

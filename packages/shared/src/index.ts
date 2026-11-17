@@ -1,9 +1,14 @@
+/** Narrows an unknown value to one of a fixed set of string literals. */
+function isOneOf<T extends string>(values: readonly T[], value: unknown): value is T {
+	return typeof value === 'string' && (values as readonly string[]).includes(value);
+}
+
 export const GROUPS = ['A', 'B', 'C', 'D', 'E'] as const;
 
 export type Group = (typeof GROUPS)[number];
 
 export function isGroup(value: unknown): value is Group {
-	return typeof value === 'string' && (GROUPS as readonly string[]).includes(value);
+	return isOneOf(GROUPS, value);
 }
 
 /** Where an account stands in the bot's onboarding flow. */
@@ -12,7 +17,7 @@ export const ONBOARDING_STAGES = ['awaiting-invite', 'choosing-group', 'ready'] 
 export type OnboardingStage = (typeof ONBOARDING_STAGES)[number];
 
 export function isOnboardingStage(value: unknown): value is OnboardingStage {
-	return typeof value === 'string' && (ONBOARDING_STAGES as readonly string[]).includes(value);
+	return isOneOf(ONBOARDING_STAGES, value);
 }
 
 /** The six prompts every topic is answered by, in canonical order. */
@@ -21,7 +26,7 @@ export const FIELD_KEYS = ['what', 'when', 'where', 'why', 'who', 'how'] as cons
 export type FieldKey = (typeof FIELD_KEYS)[number];
 
 export function isFieldKey(value: unknown): value is FieldKey {
-	return typeof value === 'string' && (FIELD_KEYS as readonly string[]).includes(value);
+	return isOneOf(FIELD_KEYS, value);
 }
 
 /** Which part of the coach a topic belongs to; null when the syllabus is silent. */
@@ -30,7 +35,7 @@ export const SIDES = ['left', 'supplementary', 'right'] as const;
 export type Side = (typeof SIDES)[number];
 
 export function isSide(value: unknown): value is Side {
-	return typeof value === 'string' && (SIDES as readonly string[]).includes(value);
+	return isOneOf(SIDES, value);
 }
 
 /** A graded verdict. Absence of a row means Untouched. */
@@ -39,7 +44,7 @@ export const FIELD_STATE_VALUES = ['learned', 'unlearned'] as const;
 export type FieldStateValue = (typeof FIELD_STATE_VALUES)[number];
 
 export function isFieldStateValue(value: unknown): value is FieldStateValue {
-	return typeof value === 'string' && (FIELD_STATE_VALUES as readonly string[]).includes(value);
+	return isOneOf(FIELD_STATE_VALUES, value);
 }
 
 /** Verdicts for one visit to one topic card, keyed by field. */
@@ -89,7 +94,7 @@ export type RunKind = (typeof RUN_KINDS)[number];
 export type GroupRunKind = Exclude<RunKind, 'section'>;
 
 export function isGroupRunKind(value: unknown): value is GroupRunKind {
-	return value === 'learn-new' || value === 'repeat-gaps';
+	return isOneOf(RUN_KINDS, value) && value !== 'section';
 }
 
 /** One card in a flat run, carrying the section it belongs to. */
@@ -274,9 +279,9 @@ export type AdminSessionResponse = {
 };
 
 /**
- * A section is `empty` when it has no authored field at all, `complete` when
- * every field is either authored or marked not applicable, and `partial`
- * otherwise.
+ * A section is `empty` when it has no authored field at all, `complete` when it
+ * has authored content and no empty field left, and `partial` otherwise. Fields
+ * marked not applicable never count as empty.
  */
 export type AdminSectionStatus = 'empty' | 'partial' | 'complete';
 

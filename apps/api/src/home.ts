@@ -89,8 +89,8 @@ function accumulateProgress(rows: ProgressRow[]): Map<number, SectionAccumulator
 	return bySection;
 }
 
-function sortByNumber<T extends { number: number }>(items: T[]): T[] {
-	return items.sort((left, right) => left.number - right.number);
+function sortByNumber<T extends { number: number }>(items: readonly T[]): T[] {
+	return [...items].sort((left, right) => left.number - right.number);
 }
 
 export function loadHome(

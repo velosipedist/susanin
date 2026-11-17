@@ -40,7 +40,7 @@ export function loadDashboard(db: SusaninDatabase): AdminDashboardResponse {
 		.orderBy(sections.number)
 		.all();
 
-	const summaries = rows.map((row) => ({ ...row, status: statusFor(row) }));
+	const summaries = rows.map((row) => ({ ...row, status: sectionStatus(row) }));
 
 	return {
 		sections: summaries,
@@ -48,7 +48,7 @@ export function loadDashboard(db: SusaninDatabase): AdminDashboardResponse {
 	};
 }
 
-function statusFor(row: {
+function sectionStatus(row: {
 	authoredFields: number;
 	emptyFields: number;
 }): AdminSectionStatus {
@@ -68,12 +68,15 @@ export function loadCohort(db: SusaninDatabase): AdminCohortResponse {
 		.all();
 
 	const groupBySection = new Map<number, Group>();
-	const counts = new Map<Group, number>(GROUPS.map((group) => [group, 0]));
-
 	for (const assignment of assignments) {
-		if (!isGroup(assignment.groupName)) continue;
-		groupBySection.set(assignment.sectionNumber, assignment.groupName);
-		counts.set(assignment.groupName, (counts.get(assignment.groupName) ?? 0) + 1);
+		if (isGroup(assignment.groupName)) {
+			groupBySection.set(assignment.sectionNumber, assignment.groupName);
+		}
+	}
+
+	const sectionCounts = new Map<Group, number>();
+	for (const group of groupBySection.values()) {
+		sectionCounts.set(group, (sectionCounts.get(group) ?? 0) + 1);
 	}
 
 	const sectionRows = db
@@ -83,7 +86,7 @@ export function loadCohort(db: SusaninDatabase): AdminCohortResponse {
 		.all();
 
 	return {
-		groups: GROUPS.map((group) => ({ group, sectionCount: counts.get(group) ?? 0 })),
+		groups: GROUPS.map((group) => ({ group, sectionCount: sectionCounts.get(group) ?? 0 })),
 		sections: sectionRows.map((section) => ({
 			...section,
 			group: groupBySection.get(section.number) ?? null
@@ -145,7 +148,7 @@ export function loadPeople(db: SusaninDatabase, config: ApiConfig): AdminPeopleR
 			displayName: row.displayName,
 			group: isGroup(row.groupName) ? row.groupName : null,
 			touchedSections: row.touchedSections,
-			isAdmin: row.isAdmin || config.adminIds.includes(row.telegramId)
+			isAdmin: isAdminAccount(row, config)
 		}))
 	};
 }
