@@ -11,7 +11,8 @@ import {
 	createPkcePair,
 	createTelegramOidcClient,
 	readPendingOidcLogin,
-	type OidcClient
+	type OidcClient,
+	type OidcIdentity
 } from './auth/oidc';
 import { SESSION_COOKIE, createSessionToken, readSessionToken } from './auth/session';
 import type { ApiConfig } from './config';
@@ -34,8 +35,6 @@ export type ApiContext = {
 	oidc?: OidcClient | null;
 };
 
-type AccountRow = typeof accounts.$inferSelect;
-
 const OIDC_COOKIE = 'susanin_oidc';
 const OIDC_COOKIE_PATH = '/api/admin/auth';
 const OIDC_COOKIE_TTL_SECONDS = 10 * 60;
@@ -53,12 +52,7 @@ const authSchema = z.object({ initData: z.string() });
 
 export function createApp({ db, config, oidc: providedOidc }: ApiContext): Hono {
 	const app = new Hono();
-	const oidc =
-		providedOidc === undefined
-			? config.telegramOidc
-				? createTelegramOidcClient(config.telegramOidc)
-				: null
-			: providedOidc;
+	const oidc = providedOidc === undefined ? defaultOidcClient(config) : providedOidc;
 
 	app.get('/api/health', (c) => c.json({ ok: true }));
 
@@ -164,7 +158,7 @@ export function createApp({ db, config, oidc: providedOidc }: ApiContext): Hono 
 			return c.redirect(adminLanding(config, 'login-failed'));
 		}
 
-		let identity;
+		let identity: OidcIdentity;
 		try {
 			identity = await oidc.exchange({ code, codeVerifier: pending.codeVerifier });
 		} catch {
@@ -205,8 +199,8 @@ export function createApp({ db, config, oidc: providedOidc }: ApiContext): Hono 
 	});
 
 	app.get('/api/admin/dashboard', (c) => {
-		const account = requireAdmin(c, db, config);
-		if (account instanceof Response) return account;
+		const denied = requireAdmin(c, db, config);
+		if (denied) return denied;
 
 		return c.json(loadDashboard(db));
 	});
@@ -276,6 +270,11 @@ export function createApp({ db, config, oidc: providedOidc }: ApiContext): Hono 
 	return app;
 }
 
+/** The real Telegram client; null when the OIDC credentials are absent. */
+function defaultOidcClient(config: ApiConfig): OidcClient | null {
+	return config.telegramOidc ? createTelegramOidcClient(config.telegramOidc) : null;
+}
+
 function sessionAccount(c: Context, db: SusaninDatabase, config: ApiConfig) {
 	const token = getCookie(c, SESSION_COOKIE);
 	const accountId = readSessionToken(config, token);
@@ -285,13 +284,10 @@ function sessionAccount(c: Context, db: SusaninDatabase, config: ApiConfig) {
 
 /**
  * The authorization gate for every admin data route. Hiding a screen is never
- * the control: a direct call without an admin session is refused here.
+ * the control: a direct call without an admin session is refused here. Returns
+ * the refusal response, or null when the caller may proceed.
  */
-function requireAdmin(
-	c: Context,
-	db: SusaninDatabase,
-	config: ApiConfig
-): AccountRow | Response {
+function requireAdmin(c: Context, db: SusaninDatabase, config: ApiConfig): Response | null {
 	const account = sessionAccount(c, db, config);
 	if (!account) {
 		return c.json({ error: 'unauthorized' }, 401);
@@ -299,7 +295,7 @@ function requireAdmin(
 	if (!isAdminAccount(account, config)) {
 		return c.json({ error: 'forbidden' }, 403);
 	}
-	return account;
+	return null;
 }
 
 /** The admin SPA's URL, with an optional login outcome the shell can explain. */

@@ -1,11 +1,8 @@
-import { createHash, createHmac, randomBytes } from 'node:crypto';
-import {
-	createRemoteJWKSet,
-	jwtVerify,
-	type JWTVerifyGetKey
-} from 'jose';
+import { createHash, randomBytes } from 'node:crypto';
+import { createRemoteJWKSet, jwtVerify, type JWTVerifyGetKey } from 'jose';
 import type { TelegramOidcConfig } from '../config';
 import { constantTimeEqual } from '../constant-time';
+import { signPayload } from './sign';
 
 /** The identity an OIDC login proves. Only the Telegram id is required. */
 export type OidcIdentity = {
@@ -31,7 +28,7 @@ export type PendingOidcLogin = {
 };
 
 export class OidcError extends Error {
-	constructor(readonly reason: string) {
+	constructor(reason: string) {
 		super(reason);
 		this.name = 'OidcError';
 	}
@@ -145,7 +142,7 @@ export async function verifyIdToken(
 /** Signs the state and verifier that travel in the login cookie. */
 export function createPendingOidcLogin(secret: string, pending: PendingOidcLogin): string {
 	const payload = Buffer.from(JSON.stringify(pending)).toString('base64url');
-	return `${payload}.${sign(secret, payload)}`;
+	return `${payload}.${signPayload(secret, payload)}`;
 }
 
 /** Returns null when the pending login is missing, tampered with or expired. */
@@ -160,7 +157,7 @@ export function readPendingOidcLogin(
 	if (parts.length !== 2) return null;
 
 	const [payload, signature] = parts;
-	if (!constantTimeEqual(sign(secret, payload), signature)) return null;
+	if (!constantTimeEqual(signPayload(secret, payload), signature)) return null;
 
 	let parsed: unknown;
 	try {
@@ -171,10 +168,6 @@ export function readPendingOidcLogin(
 
 	if (!isPendingOidcLogin(parsed) || parsed.expiresAt <= now) return null;
 	return parsed;
-}
-
-function sign(secret: string, payload: string): string {
-	return createHmac('sha256', secret).update(payload).digest('base64url');
 }
 
 function isPendingOidcLogin(value: unknown): value is PendingOidcLogin {
@@ -192,7 +185,7 @@ function firstNameFromClaims(payload: Record<string, unknown>): string {
 		return payload.given_name.trim();
 	}
 	if (typeof payload.name === 'string') {
-		return payload.name.trim().split(/\s+/)[0] ?? '';
+		return payload.name.trim().split(/\s+/)[0];
 	}
 	return '';
 }

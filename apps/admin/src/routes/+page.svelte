@@ -1,12 +1,11 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import type {
+		AdminAccount,
 		AdminDashboardResponse,
 		AdminSectionStatus,
 		AdminSessionResponse
 	} from '@susanin/shared';
-
-	type AdminAccount = AdminSessionResponse['account'];
 
 	type View =
 		| { status: 'loading' }
@@ -28,10 +27,8 @@
 	});
 
 	async function load(): Promise<void> {
-		let session: Response;
-		try {
-			session = await fetch('/api/admin/session', { credentials: 'same-origin' });
-		} catch {
+		const session = await fetchApi('/api/admin/session');
+		if (!session) {
 			view = { status: 'unavailable' };
 			return;
 		}
@@ -52,10 +49,8 @@
 			return;
 		}
 
-		let dashboard: Response;
-		try {
-			dashboard = await fetch('/api/admin/dashboard', { credentials: 'same-origin' });
-		} catch {
+		const dashboard = await fetchApi('/api/admin/dashboard');
+		if (!dashboard) {
 			view = { status: 'unavailable' };
 			return;
 		}
@@ -75,6 +70,15 @@
 			account: body.account,
 			dashboard: (await dashboard.json()) as AdminDashboardResponse
 		};
+	}
+
+	/** GETs an API path; null means the request could not be made at all. */
+	async function fetchApi(path: string): Promise<Response | null> {
+		try {
+			return await fetch(path, { credentials: 'same-origin' });
+		} catch {
+			return null;
+		}
 	}
 
 	function loginErrorMessage(code: string | null): string {

@@ -64,9 +64,7 @@ export type AdminSessionResponse = {
  * every field is either authored or marked not applicable, and `partial`
  * otherwise.
  */
-export const ADMIN_SECTION_STATUSES = ['empty', 'partial', 'complete'] as const;
-
-export type AdminSectionStatus = (typeof ADMIN_SECTION_STATUSES)[number];
+export type AdminSectionStatus = 'empty' | 'partial' | 'complete';
 
 export type AdminSectionSummary = {
 	number: number;

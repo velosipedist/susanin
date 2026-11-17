@@ -22,7 +22,7 @@ export type ApiConfig = {
 	devDisplayName: string;
 	databaseFile: string;
 	port: number;
-	/** Where the browser lands after an admin login. Absolute or rooted. */
+	/** Where the browser lands after an admin login. Must be an absolute URL. */
 	adminAppUrl: string;
 	/** Null when the OIDC client credentials are not configured. */
 	telegramOidc: TelegramOidcConfig | null;

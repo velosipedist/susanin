@@ -1,5 +1,5 @@
-import { createHmac } from 'node:crypto';
 import { constantTimeEqual } from '../constant-time';
+import { signPayload } from './sign';
 
 export const SESSION_COOKIE = 'susanin_session';
 
@@ -14,7 +14,7 @@ export type SessionConfig = {
 export function createSessionToken(config: SessionConfig, accountId: number): string {
 	const expiresAt = Math.floor(config.now() / 1000) + config.sessionTtlSeconds;
 	const payload = `${accountId}.${expiresAt}`;
-	return `${payload}.${sign(config.sessionSecret, payload)}`;
+	return `${payload}.${signPayload(config.sessionSecret, payload)}`;
 }
 
 /** Returns the account id, or null when the token is missing, tampered or expired. */
@@ -31,12 +31,8 @@ export function readSessionToken(config: SessionConfig, token: string | undefine
 	if (!Number.isInteger(accountId) || accountId <= 0) return null;
 	if (!Number.isFinite(expiresAt) || expiresAt <= Math.floor(config.now() / 1000)) return null;
 
-	const expected = sign(config.sessionSecret, `${rawAccountId}.${rawExpiresAt}`);
+	const expected = signPayload(config.sessionSecret, `${rawAccountId}.${rawExpiresAt}`);
 	if (!constantTimeEqual(expected, signature)) return null;
 
 	return accountId;
-}
-
-function sign(secret: string, payload: string): string {
-	return createHmac('sha256', secret).update(payload).digest('base64url');
 }

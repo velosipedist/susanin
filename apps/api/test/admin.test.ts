@@ -125,8 +125,9 @@ describe('admin sign-in over HTTP', () => {
 		const challenge = started.authorizationUrl.searchParams.get('code_challenge') ?? '';
 		const state = started.authorizationUrl.searchParams.get('state') ?? '';
 
+		expect(challenge).not.toBe('');
+		expect(state).not.toBe('');
 		expect(started.authorizationUrl.searchParams.get('code_challenge_method')).toBe('S256');
-		expect(started.authorizationUrl.searchParams.get('state')).toBe(state);
 		expect(started.authorizationUrl.searchParams.get('redirect_uri')).toBe(
 			'http://api.test/api/admin/auth/callback'
 		);

@@ -1,8 +1,5 @@
 import { eq, sql } from 'drizzle-orm';
-import type {
-	AdminDashboardResponse,
-	AdminSectionStatus
-} from '@susanin/shared';
+import type { AdminDashboardResponse, AdminSectionStatus } from '@susanin/shared';
 import type { ApiConfig } from './config';
 import type { SusaninDatabase } from './db';
 import { sections, topicFields, topics } from './db/schema';
