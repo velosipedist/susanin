@@ -82,6 +82,33 @@ export type SectionRun = {
 	cards: TopicCard[];
 };
 
+/** How a run was started: a whole group, its gaps, or one section on its own. */
+export const RUN_KINDS = ['learn-new', 'repeat-gaps', 'section'] as const;
+
+export type RunKind = (typeof RUN_KINDS)[number];
+export type GroupRunKind = Exclude<RunKind, 'section'>;
+
+export function isGroupRunKind(value: unknown): value is GroupRunKind {
+	return value === 'learn-new' || value === 'repeat-gaps';
+}
+
+/** One card in a flat run, carrying the section it belongs to. */
+export type RunCard = TopicCard & {
+	section: { number: number; name: string };
+	topicCount: number;
+};
+
+/** A flat list of cards across sections, walked as one run. */
+export type Run = {
+	kind: RunKind;
+	cards: RunCard[];
+};
+
+export type RunSectionInput = {
+	section: { number: number; name: string };
+	topics: readonly TopicInput[];
+};
+
 /**
  * Keeps authored, applicable fields in canonical What, When, Where, Why, Who,
  * How order. Empty and marked-not-applicable fields are never gradeable.
@@ -119,6 +146,62 @@ export function buildSectionRun(
 	}
 
 	return { section, topicCount: ordered.length, cards };
+}
+
+/** Lifts a single section's run into the flat shape the run screen walks. */
+export function runFromSection(sectionRun: SectionRun): Run {
+	return {
+		kind: 'section',
+		cards: sectionRun.cards.map((card) => ({
+			...card,
+			section: sectionRun.section,
+			topicCount: sectionRun.topicCount
+		}))
+	};
+}
+
+/**
+ * Flattens sections into one run in section-number and route order. Topics
+ * without gradeable fields are omitted, so a run never lands on an empty card.
+ */
+export function buildRun(kind: RunKind, sections: readonly RunSectionInput[]): Run {
+	const ordered = [...sections].sort(
+		(left, right) => left.section.number - right.section.number
+	);
+
+	const cards = ordered.flatMap((input) =>
+		runFromSection(buildSectionRun(input.section, input.topics)).cards
+	);
+
+	return { kind, cards };
+}
+
+/**
+ * The group sections a run walks, in ascending number order. Learn new takes
+ * every section; Repeat takes only sections holding at least one Unlearned field.
+ */
+export function selectedSectionNumbers(
+	kind: GroupRunKind,
+	sections: readonly { number: number; unlearned: number }[]
+): number[] {
+	return [...sections]
+		.sort((left, right) => left.number - right.number)
+		.filter((section) => kind === 'learn-new' || section.unlearned > 0)
+		.map((section) => section.number);
+}
+
+/**
+ * Next and Back over the flat run. Back stays on the first card (the control is
+ * disabled there); Next past the last card returns null, meaning the run is
+ * exhausted and the learner goes home.
+ */
+export function stepRun(
+	cardCount: number,
+	cardIndex: number,
+	action: 'next' | 'back'
+): number | null {
+	if (action === 'back') return cardIndex > 0 ? cardIndex - 1 : 0;
+	return cardIndex + 1 < cardCount ? cardIndex + 1 : null;
 }
 
 export type LeaveAction = 'write' | 'confirm' | 'advance';

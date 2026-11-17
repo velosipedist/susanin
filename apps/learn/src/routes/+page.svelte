@@ -3,12 +3,16 @@
 	import {
 		isFieldStateValue,
 		leaveAction,
+		runFromSection,
+		stepRun,
 		type FieldKey,
 		type FieldStateValue,
-		type SectionRun,
+		type GroupRunKind,
+		type Run,
 		type Verdicts
 	} from '@susanin/shared';
 	import {
+		loadGroupRun,
 		loadHomeForSession,
 		loadLearnerHome,
 		loadSectionRun,
@@ -25,8 +29,10 @@
 	let note = $state('');
 	let runError = $state('');
 	let openingSection = $state<number | null>(null);
+	let startingRun = $state<GroupRunKind | null>(null);
+	let runFinished = $state(false);
 
-	let run = $state<SectionRun | null>(null);
+	let run = $state<Run | null>(null);
 	let cardIndex = $state(0);
 	let verdicts = $state<Verdicts>({});
 	let revealed = $state<FieldKey | null>(null);
@@ -95,7 +101,8 @@
 		openingSection = null;
 
 		if (loaded.status === 'ready') {
-			run = loaded.run;
+			run = runFromSection(loaded.run);
+			runFinished = false;
 			cardIndex = 0;
 			resetCard();
 			return;
@@ -110,6 +117,40 @@
 				break;
 			case 'unavailable':
 				runError = 'That section could not be loaded. Try again in a moment.';
+				break;
+		}
+	}
+
+	async function startGroupRun(kind: GroupRunKind) {
+		if (startingRun !== null) return;
+
+		startingRun = kind;
+		runError = '';
+		note = '';
+
+		const loaded = await loadGroupRun(kind);
+		startingRun = null;
+
+		if (loaded.status === 'ready') {
+			run = loaded.run;
+			runFinished = false;
+			cardIndex = 0;
+			resetCard();
+			return;
+		}
+
+		switch (loaded.status) {
+			case 'empty':
+				note =
+					kind === 'repeat-gaps'
+						? 'Nothing to repeat — no section has a gap.'
+						: 'No authored content to train yet.';
+				break;
+			case 'signed-out':
+				runError = 'Your session has ended. Open Susanin from the bot again.';
+				break;
+			case 'unavailable':
+				runError = 'That run could not be loaded. Try again in a moment.';
 				break;
 		}
 	}
@@ -182,21 +223,23 @@
 			return;
 		}
 
-		if (action === 'back') {
-			if (cardIndex > 0) {
-				cardIndex -= 1;
-				resetCard();
-			}
+		const nextIndex = stepRun(cardCount, cardIndex, action);
+
+		if (nextIndex === null) {
+			void finishRun();
 			return;
 		}
 
-		if (cardIndex + 1 < cardCount) {
-			cardIndex += 1;
-			resetCard();
-			return;
-		}
+		cardIndex = nextIndex;
+		resetCard();
+	}
 
-		void closeRun();
+	async function finishRun() {
+		run = null;
+		cardIndex = 0;
+		resetCard();
+		runFinished = true;
+		await refreshHome();
 	}
 
 	async function closeRun() {
@@ -250,9 +293,9 @@
 	</div>
 
 	<article class="card" aria-labelledby="card-title">
-		<p class="card-eyebrow">Section {run.section.number} · {run.section.name}</p>
+		<p class="card-eyebrow">Section {card.section.number} · {card.section.name}</p>
 		<h1 class="card-title" id="card-title">{card.name}</h1>
-		<p class="card-meta">Topic {card.position} of {run.topicCount}</p>
+		<p class="card-meta">Topic {card.position} of {card.topicCount}</p>
 
 		{#if side}
 			<p class="side side-{side.align}">
@@ -354,8 +397,22 @@
 		</div>
 	</section>
 
+	{#if runFinished}
+		<section class="run-finished" role="status">
+			<p class="run-finished-copy"><strong>Run finished.</strong> Your progress is up to date.</p>
+			<button class="run-finished-dismiss" type="button" onclick={() => (runFinished = false)}>
+				Dismiss
+			</button>
+		</section>
+	{/if}
+
 	<div class="entries">
-		<button class="entry" type="button" onclick={() => preview('Learn new')}>
+		<button
+			class="entry"
+			type="button"
+			disabled={startingRun !== null}
+			onclick={() => startGroupRun('learn-new')}
+		>
 			<span class="entry-mark entry-mark-learn" aria-hidden="true">+</span>
 			<span class="entry-text">
 				<span class="entry-title">Learn new</span>
@@ -367,7 +424,12 @@
 			<span class="entry-chevron" aria-hidden="true">›</span>
 		</button>
 
-		<button class="entry" type="button" onclick={() => preview('Repeat gaps')}>
+		<button
+			class="entry"
+			type="button"
+			disabled={startingRun !== null}
+			onclick={() => startGroupRun('repeat-gaps')}
+		>
 			<span class="entry-mark entry-mark-repeat" aria-hidden="true">↻</span>
 			<span class="entry-text">
 				<span class="entry-title">Repeat gaps</span>
@@ -393,7 +455,7 @@
 					<button
 						class="stop"
 						type="button"
-						disabled={openingSection !== null}
+						disabled={openingSection !== null || startingRun !== null}
 						onclick={() => openSection(stop.number)}
 					>
 						<span class="stop-number">{stop.number}</span>
@@ -424,6 +486,8 @@
 		</ol>
 		{#if openingSection !== null}
 			<p class="home-note" aria-live="polite">Opening section {openingSection}…</p>
+		{:else if startingRun !== null}
+			<p class="home-note" aria-live="polite">Building your run…</p>
 		{/if}
 		{#if runError}
 			<p class="home-error" role="alert">{runError}</p>
@@ -576,6 +640,40 @@
 		height: 7px;
 	}
 
+	.run-finished {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 0.8rem;
+		margin-top: 0.8rem;
+		padding: 0.75rem 1rem;
+		border: 1px solid #bfdcc6;
+		border-radius: 16px;
+		background: #e3f1e6;
+		color: #246640;
+		box-shadow: 0 4px 12px rgba(20, 34, 26, 0.04);
+	}
+
+	.run-finished-copy {
+		margin: 0;
+		font-size: 0.82rem;
+		line-height: 1.35;
+	}
+
+	.run-finished-dismiss {
+		flex: none;
+		border: 0;
+		background: transparent;
+		padding: 0.2rem;
+		font: inherit;
+		font-size: 0.76rem;
+		font-weight: 650;
+		color: #246640;
+		text-decoration: underline;
+		text-underline-offset: 2px;
+		cursor: pointer;
+	}
+
 	.entries {
 		display: grid;
 		gap: 0.6rem;
@@ -600,6 +698,11 @@
 
 	.entry:active {
 		transform: scale(0.995);
+	}
+
+	.entry:disabled {
+		opacity: 0.7;
+		cursor: progress;
 	}
 
 	.entry-mark {

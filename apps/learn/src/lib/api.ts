@@ -1,4 +1,4 @@
-import type { HomeResponse, SectionRun, Verdicts } from '@susanin/shared';
+import type { GroupRunKind, HomeResponse, Run, SectionRun, Verdicts } from '@susanin/shared';
 import { telegramWebApp } from './telegram';
 
 export type HomeResult =
@@ -54,6 +54,22 @@ export async function loadSectionRun(sectionNumber: number): Promise<SectionRunR
 	}
 
 	const run = (await response.json()) as SectionRun;
+	return run.cards.length === 0 ? { status: 'empty' } : { status: 'ready', run };
+}
+
+export type GroupRunResult =
+	| { status: 'ready'; run: Run }
+	| { status: 'empty' | 'signed-out' | 'unavailable' };
+
+/** Loads Learn new (every group section) or Repeat gaps (sections with gaps). */
+export async function loadGroupRun(kind: GroupRunKind): Promise<GroupRunResult> {
+	const response = await request(`/api/runs/${kind}`);
+
+	if (!response.ok) {
+		return { status: response.status === 401 ? 'signed-out' : 'unavailable' };
+	}
+
+	const run = (await response.json()) as Run;
 	return run.cards.length === 0 ? { status: 'empty' } : { status: 'ready', run };
 }
 

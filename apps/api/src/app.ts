@@ -2,7 +2,7 @@ import { eq } from 'drizzle-orm';
 import { Hono, type Context } from 'hono';
 import { getCookie, setCookie } from 'hono/cookie';
 import { z } from 'zod';
-import { FIELD_STATE_VALUES, GROUPS, isGroup } from '@susanin/shared';
+import { FIELD_STATE_VALUES, GROUPS, isGroup, isGroupRunKind } from '@susanin/shared';
 import { InitDataError, validateInitData, type TelegramInitUser } from './auth/init-data';
 import { SESSION_COOKIE, createSessionToken, readSessionToken } from './auth/session';
 import type { ApiConfig } from './config';
@@ -10,7 +10,7 @@ import { constantTimeEqual } from './constant-time';
 import type { SusaninDatabase } from './db';
 import { accounts } from './db/schema';
 import { loadHome } from './home';
-import { gradeTopic, loadSectionRun } from './runs';
+import { gradeTopic, loadGroupRun, loadSectionRun } from './runs';
 import {
 	chooseGroup,
 	findAccountById,
@@ -97,6 +97,26 @@ export function createApp({ db, config }: ApiContext): Hono {
 		}
 
 		return c.json(loadHome(db, account, account.groupName));
+	});
+
+	app.get('/api/runs/:kind', (c) => {
+		const account = sessionAccount(c, db, config);
+		if (!account) {
+			return c.json({ error: 'unauthorized' }, 401);
+		}
+
+		if (!isGroup(account.groupName)) {
+			return c.json({ error: 'group-required' }, 403);
+		}
+
+		const kind = c.req.param('kind');
+		if (!isGroupRunKind(kind)) {
+			return c.json({ error: 'run-not-found' }, 404);
+		}
+
+		return c.json(
+			loadGroupRun(db, { accountId: account.id, group: account.groupName, kind })
+		);
 	});
 
 	app.get('/api/sections/:number/cards', (c) => {

@@ -1,11 +1,11 @@
 # Susanin
 
 Susanin drills the facts of a fixed Hong Kong Island coach tour. The repository
-now holds the **foundation** (issue #3) and the **single-section run**
-(issue #4): a real API over SQLite, Telegram onboarding that remembers accounts,
-a signed session cookie for the Mini App, the B-layout learner home reading from
-the database, and topic cards that write a complete card atomically. Multi-section
-runs, the full section list and the admin app arrive in later tickets.
+now holds the **foundation** (issue #3), the **single-section run** (issue #4) and
+the **multi-section runs** (issue #5): a real API over SQLite, Telegram onboarding
+that remembers accounts, a signed session cookie for the Mini App, the B-layout
+learner home reading from the database, and topic cards that write a complete card
+atomically. The full section list and the admin app arrive in later tickets.
 
 ## What works
 
@@ -25,6 +25,13 @@ runs, the full section list and the admin app arrive in later tickets.
   the direction-aware side label, six facts with Remember, Forgot and a separate
   reveal control, Next and Back. A complete card is written atomically; a partial
   card asks before it is discarded.
+- **Learn new** walks every topic of every group section in number order and
+  continues into the next section without stopping. **Repeat gaps** walks the same
+  cards but only the sections where an Unlearned field remains. Both keep one
+  **Card N of N** header and one continuous run bar; Back crosses section
+  boundaries, and exhausting a run returns home to a green, dismissible
+  run-finished note under the overall progress bar. Repeat with no gaps stays home
+  with a nothing-to-repeat message.
 - Content is seeded placeholder data with an A–E section mapping until the
   Brief/Syllabus importer (issue #8) and the admin app exist. Every field text is
   explicitly a placeholder; no source material is copied.
@@ -160,16 +167,16 @@ pnpm test
 The API tests boot the Hono app in-process against a fresh in-memory SQLite
 database per test. They cover onboarding over HTTP, the invite-code failure
 limit, persistent membership, `initData` validation, session rejection, the
-group-required rule and the home payload. They assert observable behaviour, not
-private helpers or SQL shapes.
+group-required rule, the home payload, single-section cards, atomic whole-topic
+writes, and multi-section run construction for Learn new and Repeat gaps. They
+assert observable behaviour, not private helpers or SQL shapes.
 
 ## Deliberately fake in this build
 
 - Content comes from `apps/api/src/db/seed.ts`, shaped like the future importer
   output. The 25 section names and every field text are placeholders.
-- **Learn new**, **Repeat gaps** and **All 25 sections** show an inline note
-  saying they arrive in the next build. Multi-section runs are issue #5; the full
-  list is issue #6.
+- **All 25 sections** shows an inline note saying it arrives in the next build;
+  the full list is issue #6.
 - The admin app, group assignment and the importer are later tickets. `ADMIN_IDS`
   is parsed into the account's admin flag, but no admin routes exist yet.
 - There is no deployment in this build.
