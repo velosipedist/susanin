@@ -32,6 +32,28 @@ export function isBackMatterHeading(line: string): boolean {
 }
 
 /**
+ * Opens the section a heading names, reusing the stored section when a later
+ * page repeats its number. Returns null for a heading outside the tour's range.
+ */
+export function findOrCreateSection<T extends { title: string }>(
+	sections: Map<number, T>,
+	heading: SectionHeading,
+	create: (number: number, title: string) => T
+): T | null {
+	if (heading.number < 1 || heading.number > 25) return null;
+
+	const existing = sections.get(heading.number);
+	if (existing) {
+		if (heading.title) existing.title = heading.title;
+		return existing;
+	}
+
+	const section = create(heading.number, heading.title ?? `Section ${heading.number}`);
+	sections.set(heading.number, section);
+	return section;
+}
+
+/**
  * Extracted text keeps every heading on its own line between blank lines; prose
  * wraps into longer lines that end with punctuation. This predicate is the
  * single place that turns that convention into a heading decision.

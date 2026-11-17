@@ -1,5 +1,5 @@
 import type { Side } from '@susanin/shared';
-import { readSectionHeading } from './text';
+import { findOrCreateSection, readSectionHeading } from './text';
 
 export type SyllabusItem = {
 	name: string;
@@ -32,21 +32,11 @@ export function parseSyllabus(text: string): SyllabusSection[] {
 
 		const heading = readSectionHeading(trimmed);
 		if (heading) {
-			current = null;
-			if (heading.number < 1 || heading.number > 25) continue;
-
-			const existing = sections.get(heading.number);
-			if (existing) {
-				if (heading.title) existing.title = heading.title;
-				current = existing;
-			} else {
-				current = {
-					number: heading.number,
-					title: heading.title ?? `Section ${heading.number}`,
-					items: []
-				};
-				sections.set(heading.number, current);
-			}
+			current = findOrCreateSection(sections, heading, (number, title) => ({
+				number,
+				title,
+				items: []
+			}));
 			continue;
 		}
 

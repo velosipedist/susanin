@@ -368,6 +368,7 @@
 			draftBody(state.draft)
 		);
 		state.busy = false;
+		if (editor !== state) return;
 
 		if (!response) {
 			state.error = 'The review could not be prepared. Try again.';
@@ -404,6 +405,7 @@
 
 		const response = await putApi(`/api/admin/sections/${sectionNumber}`, body);
 		state.busy = false;
+		if (editor !== state) return;
 
 		if (!response) {
 			state.error = 'The save request could not be made. Try again.';

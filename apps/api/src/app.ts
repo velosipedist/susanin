@@ -2,7 +2,7 @@ import { eq } from 'drizzle-orm';
 import { Hono, type Context } from 'hono';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
 import { z } from 'zod';
-import { FIELD_STATE_VALUES, GROUPS, isGroup, isGroupRunKind } from '@susanin/shared';
+import { FIELD_STATE_VALUES, GROUPS, isGroup, isGroupRunKind, type Group } from '@susanin/shared';
 import {
 	assignSectionGroup,
 	isAdminAccount,
@@ -53,6 +53,10 @@ export type ApiContext = {
 	/** Tests inject a fake; the app builds the Telegram client when omitted. */
 	oidc?: OidcClient | null;
 };
+
+type Account = NonNullable<ReturnType<typeof findAccountById>>;
+
+type GroupedLearner = { account: Account; group: Group };
 
 const OIDC_COOKIE = 'susanin_oidc';
 const OIDC_COOKIE_PATH = '/api/admin/auth';
@@ -130,40 +134,22 @@ export function createApp({ db, config, oidc: providedOidc }: ApiContext): Hono 
 	});
 
 	app.get('/api/home', (c) => {
-		const account = sessionAccount(c, db, config);
-		if (!account) {
-			return c.json({ error: 'unauthorized' }, 401);
-		}
+		const learner = requireGroupedLearner(c, db, config);
+		if (learner instanceof Response) return learner;
 
-		if (!isGroup(account.groupName)) {
-			return c.json({ error: 'group-required' }, 403);
-		}
-
-		return c.json(loadHome(db, account, account.groupName));
+		return c.json(loadHome(db, learner.account, learner.group));
 	});
 
 	app.get('/api/sections', (c) => {
-		const account = sessionAccount(c, db, config);
-		if (!account) {
-			return c.json({ error: 'unauthorized' }, 401);
-		}
+		const learner = requireGroupedLearner(c, db, config);
+		if (learner instanceof Response) return learner;
 
-		if (!isGroup(account.groupName)) {
-			return c.json({ error: 'group-required' }, 403);
-		}
-
-		return c.json(loadSectionList(db, account, account.groupName));
+		return c.json(loadSectionList(db, learner.account, learner.group));
 	});
 
 	app.get('/api/runs/:kind', (c) => {
-		const account = sessionAccount(c, db, config);
-		if (!account) {
-			return c.json({ error: 'unauthorized' }, 401);
-		}
-
-		if (!isGroup(account.groupName)) {
-			return c.json({ error: 'group-required' }, 403);
-		}
+		const learner = requireGroupedLearner(c, db, config);
+		if (learner instanceof Response) return learner;
 
 		const kind = c.req.param('kind');
 		if (!isGroupRunKind(kind)) {
@@ -171,15 +157,13 @@ export function createApp({ db, config, oidc: providedOidc }: ApiContext): Hono 
 		}
 
 		return c.json(
-			loadGroupRun(db, { accountId: account.id, group: account.groupName, kind })
+			loadGroupRun(db, { accountId: learner.account.id, group: learner.group, kind })
 		);
 	});
 
 	app.get('/api/sections/:number/cards', (c) => {
-		const account = sessionAccount(c, db, config);
-		if (!account) {
-			return c.json({ error: 'unauthorized' }, 401);
-		}
+		const account = requireAccount(c, db, config);
+		if (account instanceof Response) return account;
 
 		const sectionNumber = routeId(c.req.param('number'));
 		if (sectionNumber === undefined) {
@@ -195,10 +179,8 @@ export function createApp({ db, config, oidc: providedOidc }: ApiContext): Hono 
 	});
 
 	app.post('/api/topics/:topicId/progress', async (c) => {
-		const account = sessionAccount(c, db, config);
-		if (!account) {
-			return c.json({ error: 'unauthorized' }, 401);
-		}
+		const account = requireAccount(c, db, config);
+		if (account instanceof Response) return account;
 
 		const topicId = routeId(c.req.param('topicId'));
 		if (topicId === undefined) {
@@ -642,16 +624,33 @@ function sessionAccount(c: Context, db: SusaninDatabase, config: ApiConfig) {
 	return findAccountById(db, accountId);
 }
 
+/** The signed-in account, or the unauthorized response when there is none. */
+function requireAccount(c: Context, db: SusaninDatabase, config: ApiConfig): Account | Response {
+	const account = sessionAccount(c, db, config);
+	return account ?? c.json({ error: 'unauthorized' }, 401);
+}
+
+/** A signed-in account that has chosen a group, or the refusal response. */
+function requireGroupedLearner(
+	c: Context,
+	db: SusaninDatabase,
+	config: ApiConfig
+): GroupedLearner | Response {
+	const account = requireAccount(c, db, config);
+	if (account instanceof Response) return account;
+	if (!isGroup(account.groupName)) return c.json({ error: 'group-required' }, 403);
+
+	return { account, group: account.groupName };
+}
+
 /**
  * The authorization gate for every admin data route. Hiding a screen is never
  * the control: a direct call without an admin session is refused here. Returns
  * the refusal response, or null when the caller may proceed.
  */
 function requireAdmin(c: Context, db: SusaninDatabase, config: ApiConfig): Response | null {
-	const account = sessionAccount(c, db, config);
-	if (!account) {
-		return c.json({ error: 'unauthorized' }, 401);
-	}
+	const account = requireAccount(c, db, config);
+	if (account instanceof Response) return account;
 	if (!isAdminAccount(account, config)) {
 		return c.json({ error: 'forbidden' }, 403);
 	}

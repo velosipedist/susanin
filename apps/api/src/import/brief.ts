@@ -1,4 +1,9 @@
-import { isBackMatterHeading, isTopicHeading, readSectionHeading } from './text';
+import {
+	findOrCreateSection,
+	isBackMatterHeading,
+	isTopicHeading,
+	readSectionHeading
+} from './text';
 
 export type BriefSection = {
 	number: number;
@@ -22,21 +27,11 @@ export function parseBrief(text: string): BriefSection[] {
 
 		const heading = readSectionHeading(trimmed);
 		if (heading) {
-			current = null;
-			if (heading.number < 1 || heading.number > 25) continue;
-
-			const existing = sections.get(heading.number);
-			if (existing) {
-				if (heading.title) existing.title = heading.title;
-				current = existing;
-			} else {
-				current = {
-					number: heading.number,
-					title: heading.title ?? `Section ${heading.number}`,
-					topicNames: []
-				};
-				sections.set(heading.number, current);
-			}
+			current = findOrCreateSection(sections, heading, (number, title) => ({
+				number,
+				title,
+				topicNames: []
+			}));
 			continue;
 		}
 
