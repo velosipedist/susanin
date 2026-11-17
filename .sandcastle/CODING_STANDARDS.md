@@ -1,5 +1,9 @@
 # Coding Standards
 
+## Environment
+
+Use pnpm for package management.
+
 <!-- Customize this file with your project's coding standards.
      The reviewer agent loads it during code review via @.sandcastle/CODING_STANDARDS.md
      so these standards are enforced during review without costing tokens during implementation. -->

@@ -19,6 +19,10 @@ build/
 .svelte-kit/
 *.tsbuildinfo
 
+# Local SQLite databases
+apps/api/data/
+data/
+
 # Logs and local env
 pnpm-debug.log*
 .env
