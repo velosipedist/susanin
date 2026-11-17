@@ -4,7 +4,8 @@
 # Source documents — HKTB copyrighted, not for redistribution
 *.pdf
 
-# Scratch work and agent logs
+# Scratch work, local-only files and agent logs
+_local/
 .scratch/
 .sandcastle/logs/
 
