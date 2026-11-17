@@ -1,10 +1,11 @@
 # Susanin
 
 Susanin drills the facts of a fixed Hong Kong Island coach tour. The repository
-now holds the **foundation** (issue #3): a real API over SQLite, Telegram
-onboarding that remembers accounts, a signed session cookie for the Mini App,
-and the B-layout learner home reading from the database. Runs, the full section
-list and the admin app arrive in later tickets.
+now holds the **foundation** (issue #3) and the **single-section run**
+(issue #4): a real API over SQLite, Telegram onboarding that remembers accounts,
+a signed session cookie for the Mini App, the B-layout learner home reading from
+the database, and topic cards that write a complete card atomically. Multi-section
+runs, the full section list and the admin app arrive in later tickets.
 
 ## What works
 
@@ -20,6 +21,10 @@ list and the admin app arrive in later tickets.
   (one line; half size above 15 characters), overall percentage, **Learn new**,
   **Repeat gaps**, the five in-scope stops with bars and percentages, and the
   pinned **All 25 sections** footer.
+- Tapping a home stop opens a single-section run: one card per authored topic,
+  the direction-aware side label, six facts with Remember, Forgot and a separate
+  reveal control, Next and Back. A complete card is written atomically; a partial
+  card asks before it is discarded.
 - Content is seeded placeholder data with an A–E section mapping until the
   Brief/Syllabus importer (issue #8) and the admin app exist. Every field text is
   explicitly a placeholder; no source material is copied.
@@ -162,8 +167,8 @@ private helpers or SQL shapes.
 
 - Content comes from `apps/api/src/db/seed.ts`, shaped like the future importer
   output. The 25 section names and every field text are placeholders.
-- **Learn new**, **Repeat gaps**, and **All 25 sections** show an inline note
-  saying they arrive in the next build. Runs start in issues #4 and #5; the full
+- **Learn new**, **Repeat gaps** and **All 25 sections** show an inline note
+  saying they arrive in the next build. Multi-section runs are issue #5; the full
   list is issue #6.
 - The admin app, group assignment and the importer are later tickets. `ADMIN_IDS`
   is parsed into the account's admin flag, but no admin routes exist yet.

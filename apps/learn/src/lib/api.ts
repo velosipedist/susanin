@@ -1,4 +1,4 @@
-import type { HomeResponse } from '@susanin/shared';
+import type { HomeResponse, SectionRun, Verdicts } from '@susanin/shared';
 import { telegramWebApp } from './telegram';
 
 export type HomeResult =
@@ -25,7 +25,13 @@ export async function loadLearnerHome(): Promise<HomeResult> {
 		}
 	}
 
-	const response = await fetch('/api/home', { credentials: 'same-origin' });
+	return loadHomeForSession();
+}
+
+/** Reads the home again over the existing session cookie, without re-authenticating. */
+export async function loadHomeForSession(): Promise<HomeResult> {
+	const response = await request('/api/home');
+
 	if (!response.ok) {
 		return {
 			status: response.status === 403 ? await authFailure(response) : 'unavailable'
@@ -35,17 +41,53 @@ export async function loadLearnerHome(): Promise<HomeResult> {
 	return { status: 'ready', home: (await response.json()) as HomeResponse };
 }
 
-async function post(path: string, body: unknown): Promise<Response> {
+export type SectionRunResult =
+	| { status: 'ready'; run: SectionRun }
+	| { status: 'empty' | 'signed-out' | 'unavailable' };
+
+/** Loads one section's cards in route order; topics without gradeable fields are absent. */
+export async function loadSectionRun(sectionNumber: number): Promise<SectionRunResult> {
+	const response = await request(`/api/sections/${sectionNumber}/cards`);
+
+	if (!response.ok) {
+		return { status: response.status === 401 ? 'signed-out' : 'unavailable' };
+	}
+
+	const run = (await response.json()) as SectionRun;
+	return run.cards.length === 0 ? { status: 'empty' } : { status: 'ready', run };
+}
+
+export type SaveProgressResult = 'ok' | 'rejected' | 'unavailable';
+
+/** Writes a whole card's verdicts; the API refuses anything partial. */
+export async function saveTopicProgress(
+	topicId: number,
+	verdicts: Verdicts
+): Promise<SaveProgressResult> {
+	const response = await request(`/api/topics/${topicId}/progress`, {
+		method: 'POST',
+		headers: { 'content-type': 'application/json' },
+		body: JSON.stringify({ verdicts })
+	});
+
+	if (response.ok) return 'ok';
+	return response.status === 400 ? 'rejected' : 'unavailable';
+}
+
+async function request(path: string, init: RequestInit = {}): Promise<Response> {
 	try {
-		return await fetch(path, {
-			method: 'POST',
-			headers: { 'content-type': 'application/json' },
-			body: JSON.stringify(body),
-			credentials: 'same-origin'
-		});
+		return await fetch(path, { credentials: 'same-origin', ...init });
 	} catch {
 		return new Response(null, { status: 503 });
 	}
+}
+
+async function post(path: string, body: unknown): Promise<Response> {
+	return request(path, {
+		method: 'POST',
+		headers: { 'content-type': 'application/json' },
+		body: JSON.stringify(body)
+	});
 }
 
 async function authFailure(
