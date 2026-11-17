@@ -2,12 +2,13 @@
 
 Susanin drills the facts of a fixed Hong Kong Island coach tour. The repository
 now holds the **foundation** (issue #3), the **single-section run** (issue #4), the
-**multi-section runs** (issue #5), the **full section list** (issue #6) and the
-**admin app** (issue #7): a real API over SQLite, Telegram onboarding that
-remembers accounts, a signed session cookie for the Mini App, the B-layout learner
-home reading from the database, topic cards that write a complete card atomically,
-and a no-pagination admin dashboard behind Telegram OIDC sign-in. Content editing,
-group assignment and the people list arrive in later tickets.
+**multi-section runs** (issue #5), the **full section list** (issue #6), the
+**admin app** (issue #7) and the **cohort map and people list** (issue #9): a real
+API over SQLite, Telegram onboarding that remembers accounts, a signed session
+cookie for the Mini App, the B-layout learner home reading from the database,
+topic cards that write a complete card atomically, and a no-pagination admin
+dashboard behind Telegram OIDC sign-in. Content editing and the save-time
+Keep/Reset choice arrive in later tickets.
 
 ## What works
 
@@ -49,6 +50,13 @@ group assignment and the people list arrive in later tickets.
 - The dashboard lists all 25 sections in one table with topic count, authored /
   not-applicable / empty field counts, and a status that marks a section with no
   authored content.
+- The cohort map assigns each section to at most one group A–E, or leaves it
+  unassigned. Each group shows its section count; a count other than five is
+  highlighted but never blocks the change.
+- The people list shows every account's Telegram id, display name, group and the
+  number of sections touched (at least one field state in that section). An admin
+  moves a learner between groups without touching progress, and grants or revokes
+  admin rights in-app; `ADMIN_IDS` still grants admin.
 
 ## Architecture
 
@@ -242,10 +250,12 @@ database per test. They cover onboarding over HTTP, the invite-code failure
 limit, persistent membership, `initData` validation, session rejection, the
 group-required rule, the home payload, the full 25-section list, single-section
 cards, atomic whole-topic writes, multi-section run construction for Learn new and
-Repeat gaps, the admin OIDC round trip, dashboard counts and non-admin rejection,
-and the importer against short committed text fixtures (section and topic order,
-side matching, appended Syllabus-only topics, and the refusal to overwrite
-existing progress).
+Repeat gaps, the admin OIDC round trip, dashboard counts, non-admin rejection,
+the cohort map with its unique section assignment, the people list and
+touched-section counts, group moves with progress untouched, in-app promotion and
+demotion on the next request, and the importer against short committed text
+fixtures (section and topic order, side matching, appended Syllabus-only topics,
+and the refusal to overwrite existing progress).
 The OIDC unit tests verify a signed `id_token` against a local test JWKS and
 reject a wrong issuer, wrong audience, expiry and a bad signature. They assert
 observable behaviour, not private helpers or SQL shapes.
@@ -254,8 +264,8 @@ observable behaviour, not private helpers or SQL shapes.
 
 - Content comes from `apps/api/src/db/seed.ts`, shaped like the future importer
   output. The 25 section names and every field text are placeholders.
-- The dashboard is read-only. Group assignment, the people list and the content
-  editor are later tickets.
+- The dashboard, cohort map and people list are live. The content editor is a
+  later ticket.
 - The Brief/Syllabus importer is a CLI; it has not been run against the real
   documents in this build.
 - There is no deployment in this build.

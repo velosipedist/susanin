@@ -1,10 +1,15 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import type {
-		AdminAccount,
-		AdminDashboardResponse,
-		AdminSectionStatus,
-		AdminSessionResponse
+	import {
+		GROUPS,
+		type AdminAccount,
+		type AdminCohortResponse,
+		type AdminDashboardResponse,
+		type AdminPeopleResponse,
+		type AdminPerson,
+		type AdminSectionStatus,
+		type AdminSessionResponse,
+		type Group
 	} from '@susanin/shared';
 
 	type View =
@@ -16,10 +21,13 @@
 				status: 'ready';
 				account: AdminAccount;
 				dashboard: AdminDashboardResponse;
+				cohort: AdminCohortResponse;
+				people: AdminPeopleResponse;
 		  };
 
 	let view = $state<View>({ status: 'loading' });
 	let loginMessage = $state('');
+	let actionMessage = $state('');
 
 	onMount(() => {
 		loginMessage = loginErrorMessage(new URLSearchParams(window.location.search).get('error'));
@@ -65,10 +73,19 @@
 			return;
 		}
 
+		const cohort = await fetchApi('/api/admin/cohort');
+		const people = await fetchApi('/api/admin/people');
+		if (!cohort || !people || !cohort.ok || !people.ok) {
+			view = { status: 'unavailable' };
+			return;
+		}
+
 		view = {
 			status: 'ready',
 			account: body.account,
-			dashboard: (await dashboard.json()) as AdminDashboardResponse
+			dashboard: (await dashboard.json()) as AdminDashboardResponse,
+			cohort: (await cohort.json()) as AdminCohortResponse,
+			people: (await people.json()) as AdminPeopleResponse
 		};
 	}
 
@@ -79,6 +96,69 @@
 		} catch {
 			return null;
 		}
+	}
+
+	/** PUTs JSON to an API path; null means the request could not be made at all. */
+	async function putApi(path: string, body: unknown): Promise<Response | null> {
+		try {
+			return await fetch(path, {
+				method: 'PUT',
+				credentials: 'same-origin',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify(body)
+			});
+		} catch {
+			return null;
+		}
+	}
+
+	async function assignSectionGroup(sectionNumber: number, value: string): Promise<void> {
+		if (view.status !== 'ready') return;
+
+		const group = value === '' ? null : (value as Group);
+		const response = await putApi(`/api/admin/sections/${sectionNumber}/group`, { group });
+		if (!response || !response.ok) {
+			actionMessage = `Could not assign section ${sectionNumber}. Try again.`;
+			return;
+		}
+
+		actionMessage = '';
+		view.cohort = (await response.json()) as AdminCohortResponse;
+	}
+
+	async function movePerson(person: AdminPerson, value: string): Promise<void> {
+		if (view.status !== 'ready' || value === '') return;
+
+		const response = await putApi(`/api/admin/accounts/${person.telegramId}/group`, {
+			group: value as Group
+		});
+		if (!response || !response.ok) {
+			actionMessage = `Could not move ${person.displayName}. Try again.`;
+			return;
+		}
+
+		actionMessage = '';
+		view.people = (await response.json()) as AdminPeopleResponse;
+	}
+
+	async function toggleAdmin(person: AdminPerson): Promise<void> {
+		if (view.status !== 'ready') return;
+
+		const response = await putApi(`/api/admin/accounts/${person.telegramId}/admin`, {
+			isAdmin: !person.isAdmin
+		});
+		if (!response || !response.ok) {
+			actionMessage = `Could not change admin rights for ${person.displayName}. Try again.`;
+			return;
+		}
+
+		actionMessage = '';
+		view.people = (await response.json()) as AdminPeopleResponse;
+	}
+
+	function sectionGroup(sectionNumber: number): string {
+		if (view.status !== 'ready') return '';
+		return view.cohort.sections.find((section) => section.number === sectionNumber)?.group ?? '';
 	}
 
 	function loginErrorMessage(code: string | null): string {
@@ -119,6 +199,10 @@
 
 	{#if loginMessage}
 		<p class="notice" role="alert">{loginMessage}</p>
+	{/if}
+
+	{#if actionMessage}
+		<p class="notice notice-error" role="alert">{actionMessage}</p>
 	{/if}
 
 	{#if view.status === 'loading'}
@@ -165,6 +249,27 @@
 			</p>
 		</section>
 
+		<section class="group-panel" aria-labelledby="groups-heading">
+			<div class="table-heading">
+				<h2 id="groups-heading">Cohort map</h2>
+				<p>
+					Assign each section to one group below. A group with other than five sections is a
+					mistake to fix, but it never blocks a save.
+				</p>
+			</div>
+			<ul class="group-counts">
+				{#each view.cohort.groups as count (count.group)}
+					<li class:off={count.sectionCount !== 5}>
+						<span class="group-letter">{count.group}</span>
+						<span class="group-count">{count.sectionCount} sections</span>
+						{#if count.sectionCount !== 5}
+							<span class="group-warning">check this</span>
+						{/if}
+					</li>
+				{/each}
+			</ul>
+		</section>
+
 		<section class="table-panel" aria-labelledby="sections-heading">
 			<div class="table-heading">
 				<h2 id="sections-heading">All sections</h2>
@@ -181,6 +286,7 @@
 						<th class="count" scope="col">Not applicable</th>
 						<th class="count" scope="col">Empty</th>
 						<th scope="col">Status</th>
+						<th scope="col">Group</th>
 					</tr>
 				</thead>
 				<tbody>
@@ -194,6 +300,75 @@
 							<td class="count">{section.emptyFields}</td>
 							<td>
 								<span class="badge badge-{section.status}">{statusLabel(section.status)}</span>
+							</td>
+							<td>
+								<select
+									class="group-select"
+									aria-label={`Group for section ${section.number}`}
+									value={sectionGroup(section.number)}
+									onchange={(event) =>
+										void assignSectionGroup(section.number, event.currentTarget.value)}
+								>
+									<option value="">Unassigned</option>
+									{#each GROUPS as group (group)}
+										<option value={group}>{group}</option>
+									{/each}
+								</select>
+							</td>
+						</tr>
+					{/each}
+				</tbody>
+			</table>
+		</section>
+
+		<section class="table-panel people-panel" aria-labelledby="people-heading">
+			<div class="table-heading">
+				<h2 id="people-heading">People</h2>
+				<p>
+					Every account with its Telegram id, group and the number of sections it has touched.
+					Moving a learner changes their scope immediately and leaves progress untouched.
+					<code>ADMIN_IDS</code> remains an admin grant.
+				</p>
+			</div>
+
+			<table>
+				<thead>
+					<tr>
+						<th class="number" scope="col">Telegram id</th>
+						<th scope="col">Name</th>
+						<th scope="col">Group</th>
+						<th class="count" scope="col">Sections touched</th>
+						<th scope="col">Admin</th>
+					</tr>
+				</thead>
+				<tbody>
+					{#each view.people.people as person (person.telegramId)}
+						<tr>
+							<td class="number telegram-id">{person.telegramId}</td>
+							<td class="name">{person.displayName}</td>
+							<td>
+								<select
+									class="group-select"
+									aria-label={`Group for ${person.displayName}`}
+									value={person.group ?? ''}
+									onchange={(event) => void movePerson(person, event.currentTarget.value)}
+								>
+									<option value="" disabled>No group</option>
+									{#each GROUPS as group (group)}
+										<option value={group}>{group}</option>
+									{/each}
+								</select>
+							</td>
+							<td class="count">{person.touchedSections}</td>
+							<td>
+								<button
+									class="button button-small"
+									class:button-quiet={person.isAdmin}
+									type="button"
+									onclick={() => void toggleAdmin(person)}
+								>
+									{person.isAdmin ? 'Revoke admin' : 'Grant admin'}
+								</button>
 							</td>
 						</tr>
 					{/each}
@@ -404,5 +579,81 @@
 	.badge-complete {
 		background: #e3f1e6;
 		color: #256a43;
+	}
+
+	.notice-error {
+		border-color: #efc9c1;
+		background: #fdf0ed;
+		color: #8f2f1e;
+	}
+
+	.group-panel {
+		overflow: hidden;
+		margin-bottom: 1.25rem;
+		border: 1px solid #dfe6da;
+		border-radius: 18px;
+		background: #fff;
+		box-shadow: 0 10px 26px rgba(20, 34, 26, 0.05);
+	}
+
+	.group-counts {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.6rem;
+		margin: 0;
+		padding: 0 1.4rem 1.2rem;
+		list-style: none;
+	}
+
+	.group-counts li {
+		display: flex;
+		align-items: baseline;
+		gap: 0.45rem;
+		padding: 0.45rem 0.8rem;
+		border-radius: 999px;
+		background: #f2f6ef;
+		color: #2b3a30;
+		font-size: 0.85rem;
+	}
+
+	.group-counts li.off {
+		background: #fdf0de;
+		color: #8a5a13;
+	}
+
+	.group-letter {
+		font-weight: 750;
+	}
+
+	.group-count {
+		font-variant-numeric: tabular-nums;
+	}
+
+	.group-warning {
+		font-size: 0.68rem;
+		letter-spacing: 0.07em;
+		text-transform: uppercase;
+	}
+
+	.group-select {
+		padding: 0.35rem 0.5rem;
+		border: 1px solid #cfd9ca;
+		border-radius: 8px;
+		background: #fff;
+		color: #17211a;
+		font: inherit;
+	}
+
+	.people-panel {
+		margin-top: 1.25rem;
+	}
+
+	.button-small {
+		padding: 0.35rem 0.6rem;
+		font-size: 0.78rem;
+	}
+
+	.telegram-id {
+		width: 9rem;
 	}
 </style>

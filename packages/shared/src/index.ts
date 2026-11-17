@@ -294,3 +294,34 @@ export type AdminDashboardResponse = {
 	sections: AdminSectionSummary[];
 	totalSections: number;
 };
+
+/** How many sections a group currently holds. Other than five is a visible mistake, not a block. */
+export type AdminGroupSectionCount = {
+	group: Group;
+	sectionCount: number;
+};
+
+export type AdminCohortSection = {
+	number: number;
+	name: string;
+	group: Group | null;
+};
+
+/** The cohort map: every section's optional group, plus the per-group counts. */
+export type AdminCohortResponse = {
+	groups: AdminGroupSectionCount[];
+	sections: AdminCohortSection[];
+};
+
+/** An account in the admin people list. `isAdmin` includes `ADMIN_IDS` grants. */
+export type AdminPerson = {
+	telegramId: number;
+	displayName: string;
+	group: Group | null;
+	touchedSections: number;
+	isAdmin: boolean;
+};
+
+export type AdminPeopleResponse = {
+	people: AdminPerson[];
+};

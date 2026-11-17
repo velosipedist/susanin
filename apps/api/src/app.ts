@@ -3,7 +3,15 @@ import { Hono, type Context } from 'hono';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
 import { z } from 'zod';
 import { FIELD_STATE_VALUES, GROUPS, isGroup, isGroupRunKind } from '@susanin/shared';
-import { isAdminAccount, loadDashboard } from './admin';
+import {
+	assignSectionGroup,
+	isAdminAccount,
+	loadCohort,
+	loadDashboard,
+	loadPeople,
+	moveAccountGroup,
+	setAccountAdmin
+} from './admin';
 import { InitDataError, validateInitData, type TelegramInitUser } from './auth/init-data';
 import {
 	createOidcState,
@@ -55,6 +63,10 @@ const verdictsSchema = z.object({
 	verdicts: z.record(z.string(), z.enum(FIELD_STATE_VALUES))
 });
 
+const sectionGroupSchema = z.object({ group: z.enum(GROUPS).nullable() });
+const accountGroupSchema = z.object({ group: z.enum(GROUPS) });
+const adminFlagSchema = z.object({ isAdmin: z.boolean() });
+
 export function createApp({ db, config, oidc: providedOidc }: ApiContext): Hono {
 	const app = new Hono();
 	const oidc = providedOidc === undefined ? defaultOidcClient(config) : providedOidc;
@@ -91,10 +103,9 @@ export function createApp({ db, config, oidc: providedOidc }: ApiContext): Hono 
 		}
 
 		const displayName = user.firstName.trim() || account.displayName;
-		const isAdmin = config.adminIds.includes(user.id);
-		if (displayName !== account.displayName || isAdmin !== account.isAdmin) {
+		if (displayName !== account.displayName) {
 			db.update(accounts)
-				.set({ displayName, isAdmin })
+				.set({ displayName })
 				.where(eq(accounts.id, account.id))
 				.run();
 		}
@@ -297,6 +308,92 @@ export function createApp({ db, config, oidc: providedOidc }: ApiContext): Hono 
 		return c.json(loadDashboard(db));
 	});
 
+	app.get('/api/admin/cohort', (c) => {
+		const denied = requireAdmin(c, db, config);
+		if (denied) return denied;
+
+		return c.json(loadCohort(db));
+	});
+
+	app.put('/api/admin/sections/:number/group', async (c) => {
+		const denied = requireAdmin(c, db, config);
+		if (denied) return denied;
+
+		const sectionNumber = routeId(c.req.param('number'));
+		if (sectionNumber === undefined) {
+			return c.json({ error: 'section-not-found' }, 404);
+		}
+
+		const parsed = sectionGroupSchema.safeParse(await readJson(c.req.raw));
+		if (!parsed.success) {
+			return c.json({ error: 'invalid-group' }, 400);
+		}
+
+		const ok = assignSectionGroup(db, {
+			sectionNumber,
+			group: parsed.data.group
+		});
+		if (!ok) {
+			return c.json({ error: 'section-not-found' }, 404);
+		}
+
+		return c.json(loadCohort(db));
+	});
+
+	app.get('/api/admin/people', (c) => {
+		const denied = requireAdmin(c, db, config);
+		if (denied) return denied;
+
+		return c.json(loadPeople(db, config));
+	});
+
+	app.put('/api/admin/accounts/:telegramId/group', async (c) => {
+		const denied = requireAdmin(c, db, config);
+		if (denied) return denied;
+
+		const telegramId = routeId(c.req.param('telegramId'));
+		if (telegramId === undefined) {
+			return c.json({ error: 'account-not-found' }, 404);
+		}
+
+		const parsed = accountGroupSchema.safeParse(await readJson(c.req.raw));
+		if (!parsed.success) {
+			return c.json({ error: 'invalid-group' }, 400);
+		}
+
+		const ok = moveAccountGroup(db, { telegramId, group: parsed.data.group });
+		if (!ok) {
+			return c.json({ error: 'account-not-found' }, 404);
+		}
+
+		return c.json(loadPeople(db, config));
+	});
+
+	app.put('/api/admin/accounts/:telegramId/admin', async (c) => {
+		const denied = requireAdmin(c, db, config);
+		if (denied) return denied;
+
+		const telegramId = routeId(c.req.param('telegramId'));
+		if (telegramId === undefined) {
+			return c.json({ error: 'account-not-found' }, 404);
+		}
+
+		const parsed = adminFlagSchema.safeParse(await readJson(c.req.raw));
+		if (!parsed.success) {
+			return c.json({ error: 'invalid-request' }, 400);
+		}
+
+		const ok = setAccountAdmin(db, {
+			telegramId,
+			isAdmin: parsed.data.isAdmin
+		});
+		if (!ok) {
+			return c.json({ error: 'account-not-found' }, 404);
+		}
+
+		return c.json(loadPeople(db, config));
+	});
+
 	app.use('/api/bot/*', async (c, next) => {
 		const provided = c.req.header('x-bot-secret') ?? '';
 		if (!constantTimeEqual(provided, config.botSecret)) {
@@ -311,7 +408,7 @@ export function createApp({ db, config, oidc: providedOidc }: ApiContext): Hono 
 			return c.json({ error: 'invalid-request' }, 400);
 		}
 
-		return c.json(startOnboarding(db, config, parsed.data));
+		return c.json(startOnboarding(db, parsed.data));
 	});
 
 	app.post('/api/bot/invite', async (c) => {

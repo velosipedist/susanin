@@ -21,14 +21,12 @@ export type InviteResult =
 
 export function startOnboarding(
 	db: SusaninDatabase,
-	config: ApiConfig,
 	input: { telegramId: number; firstName: string }
 ): StartResult {
 	const displayName = input.firstName.trim() || 'Learner';
-	const isAdmin = config.adminIds.includes(input.telegramId);
 
 	db.update(accounts)
-		.set({ displayName, isAdmin })
+		.set({ displayName })
 		.where(eq(accounts.telegramId, input.telegramId))
 		.run();
 

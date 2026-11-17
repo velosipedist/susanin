@@ -37,7 +37,7 @@ const SECTION_NAMES = [
 	'Happy Valley Racecourse'
 ];
 
-/** Temporary A–E mapping until admins assign sections (issue #9). */
+/** Temporary A–E mapping for a fresh database; admins change it in the app. */
 export const DEMO_GROUP_SECTIONS: Record<Group, number[]> = {
 	A: [1, 2, 3, 4, 5],
 	B: [6, 7, 8, 9, 10],
@@ -54,13 +54,22 @@ export function seedContent(db: SusaninDatabase): void {
 			tx.insert(groups).values({ name: group }).onConflictDoNothing().run();
 		}
 
+		// The demo A–E mapping belongs to a brand-new database only. Once any
+		// section exists, the stored map wins and a restart must not recreate a
+		// mapping an admin has changed or cleared.
+		const existingSections = tx
+			.select({ count: sql<number>`count(*)` })
+			.from(sections)
+			.get();
+		const seedGroupAssignments = (existingSections?.count ?? 0) === 0;
+
 		for (const [index, name] of SECTION_NAMES.entries()) {
 			const sectionNumber = index + 1;
 
 			tx.insert(sections).values({ number: sectionNumber, name }).onConflictDoNothing().run();
 
 			const group = groupForSection(sectionNumber);
-			if (group) {
+			if (group && seedGroupAssignments) {
 				tx.insert(groupSections)
 					.values({ groupName: group, sectionNumber })
 					.onConflictDoNothing()
