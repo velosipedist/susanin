@@ -210,11 +210,12 @@ function diffFields(
 	next: readonly AdminDraftField[]
 ): AdminFieldDiff[] {
 	const previousByKey = new Map(previous.map((field) => [field.key, field]));
+	const nextByKey = new Map(next.map((field) => [field.key, field]));
 	const changed: AdminFieldDiff[] = [];
 
 	for (const key of FIELD_KEYS) {
 		const before = previousByKey.get(key);
-		const after = next.find((field) => field.key === key);
+		const after = nextByKey.get(key);
 		if (!before || !after) continue;
 
 		if (before.text !== after.text || before.notApplicable !== after.notApplicable) {

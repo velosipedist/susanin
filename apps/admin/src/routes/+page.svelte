@@ -2,6 +2,8 @@
 	import { onMount } from 'svelte';
 	import {
 		GROUPS,
+		isGroup,
+		isSide,
 		type AdminAccount,
 		type AdminCohortResponse,
 		type AdminDashboardResponse,
@@ -12,9 +14,7 @@
 		type AdminSectionReview,
 		type AdminSectionSaveResponse,
 		type AdminSectionStatus,
-		type AdminSessionResponse,
-		type Group,
-		type Side
+		type AdminSessionResponse
 	} from '@susanin/shared';
 
 	type View =
@@ -30,18 +30,17 @@
 				people: AdminPeopleResponse;
 		  };
 
+	type EditorState = {
+		draft: AdminSectionDraft;
+		review: AdminSectionReview | null;
+		error: string;
+		busy: boolean;
+	};
+
 	let view = $state<View>({ status: 'loading' });
 	let loginMessage = $state('');
 	let actionMessage = $state('');
 	let editor = $state<EditorState | null>(null);
-
-	type EditorState = {
-		draft: AdminSectionDraft;
-		review: AdminSectionReview | null;
-		conflict: AdminSectionReview | null;
-		error: string;
-		busy: boolean;
-	};
 
 	onMount(() => {
 		loginMessage = loginErrorMessage(new URLSearchParams(window.location.search).get('error'));
@@ -146,7 +145,6 @@
 		editor = {
 			draft: (await response.json()) as AdminSectionDraft,
 			review: null,
-			conflict: null,
 			error: '',
 			busy: false
 		};
@@ -159,79 +157,79 @@
 	function dismissReview(): void {
 		if (!editor) return;
 		editor.review = null;
-		editor.conflict = null;
 	}
 
 	/** Any edit after a review makes that review stale, so it is dropped. */
 	function invalidateReview(): void {
 		if (!editor || !editor.review) return;
 		editor.review = null;
-		editor.conflict = null;
 		editor.error = '';
 	}
 
 	function setSide(topic: AdminSectionDraft['topics'][number], value: string): void {
-		topic.side = value === '' ? null : (value as Side);
+		topic.side = isSide(value) ? value : null;
 	}
 
 	async function reviewDraft(): Promise<void> {
-		if (!editor || editor.busy) return;
+		// Hold the editor this request belongs to: closing or replacing it while
+		// the request is in flight must not write into a different editor.
+		const state = editor;
+		if (!state || state.busy) return;
 
-		editor.busy = true;
-		editor.error = '';
-		editor.conflict = null;
+		state.busy = true;
+		state.error = '';
 
 		const response = await postApi(
-			`/api/admin/sections/${editor.draft.section.number}/review`,
-			draftBody(editor.draft)
+			`/api/admin/sections/${state.draft.section.number}/review`,
+			draftBody(state.draft)
 		);
-		editor.busy = false;
+		state.busy = false;
 
 		if (!response) {
-			editor.error = 'The review could not be prepared. Try again.';
+			state.error = 'The review could not be prepared. Try again.';
 			return;
 		}
 
 		if (!response.ok) {
-			editor.error =
+			state.error =
 				response.status === 400
 					? 'This draft is invalid. Every topic needs a name, a valid side and exactly six distinct fields.'
 					: 'The review could not be prepared. Try again.';
 			return;
 		}
 
-		editor.review = (await response.json()) as AdminSectionReview;
+		state.review = (await response.json()) as AdminSectionReview;
 	}
 
 	async function saveDraft(): Promise<void> {
-		if (!editor || editor.busy) return;
+		const state = editor;
+		if (!state || state.busy) return;
 
-		const sectionNumber = editor.draft.section.number;
-		editor.busy = true;
-		editor.error = '';
+		const sectionNumber = state.draft.section.number;
+		state.busy = true;
+		state.error = '';
 
 		const response = await putApi(
 			`/api/admin/sections/${sectionNumber}`,
-			draftBody(editor.draft)
+			draftBody(state.draft)
 		);
-		editor.busy = false;
+		state.busy = false;
 
 		if (!response) {
-			editor.error = 'The save request could not be made. Try again.';
+			state.error = 'The save request could not be made. Try again.';
 			return;
 		}
 
 		if (response.status === 409) {
 			const conflict = (await response.json()) as AdminProgressConflict;
-			editor.conflict = conflict.review;
-			editor.error = `Not saved. ${conflict.affectedLearners} ${
+			state.error = `Not saved. ${conflict.affectedLearners} ${
 				conflict.affectedLearners === 1 ? 'learner has' : 'learners have'
 			} already graded the changed topics. Nothing has been written.`;
 			return;
 		}
 
 		if (!response.ok) {
-			editor.error =
+			state.error =
 				response.status === 400
 					? 'This draft is invalid. Nothing has been written.'
 					: 'The section could not be saved. Try again.';
@@ -239,9 +237,8 @@
 		}
 
 		const saved = (await response.json()) as AdminSectionSaveResponse;
-		editor.draft = saved.draft;
-		editor.review = null;
-		editor.conflict = null;
+		state.draft = saved.draft;
+		state.review = null;
 		actionMessage = `Section ${sectionNumber} saved.`;
 		await refreshDashboard();
 	}
@@ -258,7 +255,7 @@
 	async function assignSectionGroup(sectionNumber: number, value: string): Promise<void> {
 		if (view.status !== 'ready') return;
 
-		const group = value === '' ? null : (value as Group);
+		const group = isGroup(value) ? value : null;
 		const response = await putApi(`/api/admin/sections/${sectionNumber}/group`, { group });
 		if (!response || !response.ok) {
 			actionMessage = `Could not assign section ${sectionNumber}. Try again.`;
@@ -270,10 +267,10 @@
 	}
 
 	async function movePerson(person: AdminPerson, value: string): Promise<void> {
-		if (view.status !== 'ready' || value === '') return;
+		if (view.status !== 'ready' || !isGroup(value)) return;
 
 		const response = await putApi(`/api/admin/accounts/${person.telegramId}/group`, {
-			group: value as Group
+			group: value
 		});
 		if (!response || !response.ok) {
 			actionMessage = `Could not move ${person.displayName}. Try again.`;
