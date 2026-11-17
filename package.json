@@ -11,8 +11,11 @@
   },
   "scripts": {
     "dev": "pnpm --filter @susanin/learn dev",
+    "admin": "pnpm --filter @susanin/admin dev",
     "api": "pnpm --filter @susanin/api dev",
-    "build": "pnpm --filter @susanin/learn build",
+    "build": "pnpm --filter @susanin/learn build && pnpm --filter @susanin/admin build",
+    "build:learn": "pnpm --filter @susanin/learn build",
+    "build:admin": "pnpm --filter @susanin/admin build",
     "preview": "pnpm --filter @susanin/learn preview",
     "bot": "pnpm --filter @susanin/bot start",
     "typecheck": "pnpm -r typecheck",

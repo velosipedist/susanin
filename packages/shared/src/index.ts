@@ -260,3 +260,37 @@ export type SectionListResponse = {
 	};
 	sections: SectionListItem[];
 };
+
+/** An account as the admin app sees it. Admin rights may be granted by env or in-app. */
+export type AdminAccount = {
+	telegramId: number;
+	displayName: string;
+	group: Group | null;
+	isAdmin: boolean;
+};
+
+export type AdminSessionResponse = {
+	account: AdminAccount;
+};
+
+/**
+ * A section is `empty` when it has no authored field at all, `complete` when
+ * every field is either authored or marked not applicable, and `partial`
+ * otherwise.
+ */
+export type AdminSectionStatus = 'empty' | 'partial' | 'complete';
+
+export type AdminSectionSummary = {
+	number: number;
+	name: string;
+	topicCount: number;
+	authoredFields: number;
+	notApplicableFields: number;
+	emptyFields: number;
+	status: AdminSectionStatus;
+};
+
+export type AdminDashboardResponse = {
+	sections: AdminSectionSummary[];
+	totalSections: number;
+};

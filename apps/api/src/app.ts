@@ -1,9 +1,19 @@
 import { eq } from 'drizzle-orm';
 import { Hono, type Context } from 'hono';
-import { getCookie, setCookie } from 'hono/cookie';
+import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
 import { z } from 'zod';
 import { FIELD_STATE_VALUES, GROUPS, isGroup, isGroupRunKind } from '@susanin/shared';
+import { isAdminAccount, loadDashboard } from './admin';
 import { InitDataError, validateInitData, type TelegramInitUser } from './auth/init-data';
+import {
+	createOidcState,
+	createPendingOidcLogin,
+	createPkcePair,
+	createTelegramOidcClient,
+	readPendingOidcLogin,
+	type OidcClient,
+	type OidcIdentity
+} from './auth/oidc';
 import { SESSION_COOKIE, createSessionToken, readSessionToken } from './auth/session';
 import type { ApiConfig } from './config';
 import { constantTimeEqual } from './constant-time';
@@ -22,7 +32,13 @@ import {
 export type ApiContext = {
 	db: SusaninDatabase;
 	config: ApiConfig;
+	/** Tests inject a fake; the app builds the Telegram client when omitted. */
+	oidc?: OidcClient | null;
 };
+
+const OIDC_COOKIE = 'susanin_oidc';
+const OIDC_COOKIE_PATH = '/api/admin/auth';
+const OIDC_COOKIE_TTL_SECONDS = 10 * 60;
 
 const botUserSchema = z.object({
 	telegramId: z.number().int().positive(),
@@ -39,8 +55,9 @@ const verdictsSchema = z.object({
 	verdicts: z.record(z.string(), z.enum(FIELD_STATE_VALUES))
 });
 
-export function createApp({ db, config }: ApiContext): Hono {
+export function createApp({ db, config, oidc: providedOidc }: ApiContext): Hono {
 	const app = new Hono();
+	const oidc = providedOidc === undefined ? defaultOidcClient(config) : providedOidc;
 
 	app.get('/api/health', (c) => c.json({ ok: true }));
 
@@ -186,6 +203,100 @@ export function createApp({ db, config }: ApiContext): Hono {
 		}
 	});
 
+	app.get('/api/admin/auth/login', (c) => {
+		if (!oidc) {
+			return c.json({ error: 'admin-login-unavailable' }, 503);
+		}
+
+		const { verifier, challenge } = createPkcePair();
+		const state = createOidcState();
+
+		setCookie(
+			c,
+			OIDC_COOKIE,
+			createPendingOidcLogin(config.sessionSecret, {
+				state,
+				codeVerifier: verifier,
+				expiresAt: config.now() + OIDC_COOKIE_TTL_SECONDS * 1000
+			}),
+			{
+				path: OIDC_COOKIE_PATH,
+				httpOnly: true,
+				sameSite: 'Lax',
+				secure: config.cookieSecure,
+				maxAge: OIDC_COOKIE_TTL_SECONDS
+			}
+		);
+
+		return c.redirect(oidc.authorizationUrl({ state, codeChallenge: challenge }));
+	});
+
+	app.get('/api/admin/auth/callback', async (c) => {
+		if (!oidc) {
+			return c.redirect(adminLanding(config, 'login-unavailable'));
+		}
+
+		const pending = readPendingOidcLogin(
+			config.sessionSecret,
+			getCookie(c, OIDC_COOKIE),
+			config.now()
+		);
+		deleteCookie(c, OIDC_COOKIE, { path: OIDC_COOKIE_PATH });
+
+		const code = c.req.query('code');
+		const state = c.req.query('state');
+
+		if (!pending || !code || !state || !constantTimeEqual(pending.state, state)) {
+			return c.redirect(adminLanding(config, 'login-failed'));
+		}
+
+		let identity: OidcIdentity;
+		try {
+			identity = await oidc.exchange({ code, codeVerifier: pending.codeVerifier });
+		} catch {
+			return c.redirect(adminLanding(config, 'login-failed'));
+		}
+
+		const account = findAccountByTelegramId(db, identity.telegramId);
+		if (!account) {
+			return c.redirect(adminLanding(config, 'not-invited'));
+		}
+
+		const displayName = identity.firstName.trim() || account.displayName;
+		if (displayName !== account.displayName) {
+			db.update(accounts)
+				.set({ displayName })
+				.where(eq(accounts.id, account.id))
+				.run();
+		}
+
+		setSessionCookie(c, config, account.id);
+		return c.redirect(adminLanding(config));
+	});
+
+	app.get('/api/admin/session', (c) => {
+		const account = sessionAccount(c, db, config);
+		if (!account) {
+			return c.json({ error: 'unauthorized' }, 401);
+		}
+
+		return c.json({
+			account: {
+				telegramId: account.telegramId,
+				displayName: account.displayName,
+				group: isGroup(account.groupName) ? account.groupName : null,
+				isAdmin: isAdminAccount(account, config)
+			}
+		});
+	});
+
+	app.get('/api/admin/dashboard', (c) => {
+		const denied = requireAdmin(c, db, config);
+		if (denied) return denied;
+
+		return c.json(loadDashboard(db));
+	});
+
 	app.use('/api/bot/*', async (c, next) => {
 		const provided = c.req.header('x-bot-secret') ?? '';
 		if (!constantTimeEqual(provided, config.botSecret)) {
@@ -251,11 +362,39 @@ export function createApp({ db, config }: ApiContext): Hono {
 	return app;
 }
 
+/** The real Telegram client; null when the OIDC credentials are absent. */
+function defaultOidcClient(config: ApiConfig): OidcClient | null {
+	return config.telegramOidc ? createTelegramOidcClient(config.telegramOidc) : null;
+}
+
 function sessionAccount(c: Context, db: SusaninDatabase, config: ApiConfig) {
 	const token = getCookie(c, SESSION_COOKIE);
 	const accountId = readSessionToken(config, token);
 	if (!accountId) return undefined;
 	return findAccountById(db, accountId);
+}
+
+/**
+ * The authorization gate for every admin data route. Hiding a screen is never
+ * the control: a direct call without an admin session is refused here. Returns
+ * the refusal response, or null when the caller may proceed.
+ */
+function requireAdmin(c: Context, db: SusaninDatabase, config: ApiConfig): Response | null {
+	const account = sessionAccount(c, db, config);
+	if (!account) {
+		return c.json({ error: 'unauthorized' }, 401);
+	}
+	if (!isAdminAccount(account, config)) {
+		return c.json({ error: 'forbidden' }, 403);
+	}
+	return null;
+}
+
+/** The admin SPA's URL, with an optional login outcome the shell can explain. */
+function adminLanding(config: ApiConfig, error?: string): string {
+	const url = new URL(config.adminAppUrl);
+	if (error) url.searchParams.set('error', error);
+	return url.toString();
 }
 
 function setSessionCookie(c: Context, config: ApiConfig, accountId: number): void {
