@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { resolve } from '$app/paths';
 	import {
 		isFieldStateValue,
 		leaveAction,
@@ -48,6 +49,12 @@
 		telegram?.setBackgroundColor?.('#f1f4ee');
 
 		result = await loadLearnerHome();
+
+		const section = requestedSection();
+		if (section !== null && result.status === 'ready') {
+			clearRequestedSection();
+			await openSection(section);
+		}
 	});
 
 	const home = $derived(result?.status === 'ready' ? result.home : null);
@@ -86,8 +93,16 @@
 		}
 	}
 
-	function preview(label: string) {
-		note = `${label} is wired in the next build.`;
+	/** The section requested by a row on the full list screen, if any. */
+	function requestedSection(): number | null {
+		const raw = new URLSearchParams(window.location.search).get('section');
+		const number = Number(raw);
+		return Number.isInteger(number) && number > 0 ? number : null;
+	}
+
+	/** Drops the deep-link query so a refresh or back navigation lands on home. */
+	function clearRequestedSection() {
+		window.history.replaceState(null, '', resolve('/'));
 	}
 
 	async function openSection(number: number) {
@@ -499,10 +514,10 @@
 	{#if note}
 		<p class="note" aria-live="polite">{note}</p>
 	{/if}
-	<button class="all-sections" type="button" onclick={() => preview('The full section list')}>
+	<a class="all-sections" href={resolve('/sections')}>
 		<span>All 25 sections</span>
 		<span class="entry-chevron" aria-hidden="true">›</span>
-	</button>
+	</a>
 </footer>
 {:else}
 <main class="status">
@@ -898,6 +913,7 @@
 		font: inherit;
 		font-weight: 650;
 		color: #14221a;
+		text-decoration: none;
 		cursor: pointer;
 	}
 

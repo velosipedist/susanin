@@ -1,10 +1,5 @@
 import type { SectionProgress } from '@susanin/shared';
 
-export type SectionStats = SectionProgress & {
-	authored: number;
-	percent: number;
-};
-
 export type OverallStats = {
 	learned: number;
 	authored: number;
@@ -23,7 +18,9 @@ export function percentLearned(learned: number, authored: number): number {
 	return Math.round((learned / authored) * 100);
 }
 
-export function sectionStats(section: SectionProgress): SectionStats {
+export function sectionStats<T extends SectionProgress>(
+	section: T
+): T & { authored: number; percent: number } {
 	const authored = authoredCount(section);
 	return {
 		...section,

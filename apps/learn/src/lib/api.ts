@@ -1,29 +1,45 @@
-import type { GroupRunKind, HomeResponse, Run, SectionRun, Verdicts } from '@susanin/shared';
+import type {
+	GroupRunKind,
+	HomeResponse,
+	Run,
+	SectionListResponse,
+	SectionRun,
+	Verdicts
+} from '@susanin/shared';
 import { telegramWebApp } from './telegram';
+
+type SessionStatus = 'onboarding-required' | 'group-required' | 'signed-out' | 'unavailable';
 
 export type HomeResult =
 	| { status: 'ready'; home: HomeResponse }
-	| { status: 'onboarding-required' | 'group-required' | 'signed-out' | 'unavailable' };
+	| { status: SessionStatus };
+
+export type SectionListResult =
+	| { status: 'ready'; list: SectionListResponse }
+	| { status: SessionStatus };
 
 /**
- * Exchanges the Mini App's Telegram initData for the signed session cookie,
- * then reads the account's home from the API. In a plain browser the API's
- * local dev session is tried instead; it is enabled only when DEV_AUTH is on.
+ * Exchanges the Mini App's Telegram initData for the signed session cookie.
+ * In a plain browser the API's local dev session is tried instead; it is
+ * enabled only when DEV_AUTH is on.
  */
-export async function loadLearnerHome(): Promise<HomeResult> {
+async function openSession(): Promise<SessionStatus | 'ok'> {
 	const initData = telegramWebApp()?.initData ?? '';
 
 	if (initData) {
 		const auth = await post('/api/auth/telegram', { initData });
-		if (!auth.ok) {
-			return { status: await authFailure(auth) };
-		}
-	} else {
-		const dev = await post('/api/dev/session', {});
-		if (!dev.ok) {
-			return { status: dev.status === 404 ? 'signed-out' : 'unavailable' };
-		}
+		return auth.ok ? 'ok' : authFailure(auth);
 	}
+
+	const dev = await post('/api/dev/session', {});
+	if (dev.ok) return 'ok';
+	return dev.status === 404 ? 'signed-out' : 'unavailable';
+}
+
+/** Authenticates the Mini App, then reads the account's home. */
+export async function loadLearnerHome(): Promise<HomeResult> {
+	const session = await openSession();
+	if (session !== 'ok') return { status: session };
 
 	return loadHomeForSession();
 }
@@ -39,6 +55,22 @@ export async function loadHomeForSession(): Promise<HomeResult> {
 	}
 
 	return { status: 'ready', home: (await response.json()) as HomeResponse };
+}
+
+/** Reads all 25 sections, marking the account's group in scope. */
+export async function loadSectionList(): Promise<SectionListResult> {
+	const session = await openSession();
+	if (session !== 'ok') return { status: session };
+
+	const response = await request('/api/sections');
+
+	if (!response.ok) {
+		return {
+			status: response.status === 403 ? await authFailure(response) : 'unavailable'
+		};
+	}
+
+	return { status: 'ready', list: (await response.json()) as SectionListResponse };
 }
 
 type LoadedRun<T> =

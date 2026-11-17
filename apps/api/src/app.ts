@@ -9,7 +9,7 @@ import type { ApiConfig } from './config';
 import { constantTimeEqual } from './constant-time';
 import type { SusaninDatabase } from './db';
 import { accounts } from './db/schema';
-import { loadHome } from './home';
+import { loadHome, loadSectionList } from './home';
 import { gradeTopic, loadGroupRun, loadSectionRun } from './runs';
 import {
 	chooseGroup,
@@ -97,6 +97,19 @@ export function createApp({ db, config }: ApiContext): Hono {
 		}
 
 		return c.json(loadHome(db, account, account.groupName));
+	});
+
+	app.get('/api/sections', (c) => {
+		const account = sessionAccount(c, db, config);
+		if (!account) {
+			return c.json({ error: 'unauthorized' }, 401);
+		}
+
+		if (!isGroup(account.groupName)) {
+			return c.json({ error: 'group-required' }, 403);
+		}
+
+		return c.json(loadSectionList(db, account, account.groupName));
 	});
 
 	app.get('/api/runs/:kind', (c) => {

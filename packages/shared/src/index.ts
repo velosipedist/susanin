@@ -246,3 +246,17 @@ export type HomeResponse = {
 	sections: SectionProgress[];
 	totalSections: number;
 };
+
+/** One row of the full section list, with whether it belongs to the learner's group. */
+export type SectionListItem = SectionProgress & {
+	inScope: boolean;
+};
+
+/** The full 25-section list: every section, in route order, scoped for one account. */
+export type SectionListResponse = {
+	account: {
+		firstName: string;
+		group: Group;
+	};
+	sections: SectionListItem[];
+};
