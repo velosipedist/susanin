@@ -148,16 +148,18 @@ export function buildSectionRun(
 	return { section, topicCount: ordered.length, cards };
 }
 
+/** Lifts a section's cards into the flat shape the run screen walks. */
+function sectionRunCards(sectionRun: SectionRun): RunCard[] {
+	return sectionRun.cards.map((card) => ({
+		...card,
+		section: sectionRun.section,
+		topicCount: sectionRun.topicCount
+	}));
+}
+
 /** Lifts a single section's run into the flat shape the run screen walks. */
 export function runFromSection(sectionRun: SectionRun): Run {
-	return {
-		kind: 'section',
-		cards: sectionRun.cards.map((card) => ({
-			...card,
-			section: sectionRun.section,
-			topicCount: sectionRun.topicCount
-		}))
-	};
+	return { kind: 'section', cards: sectionRunCards(sectionRun) };
 }
 
 /**
@@ -169,11 +171,12 @@ export function buildRun(kind: RunKind, sections: readonly RunSectionInput[]): R
 		(left, right) => left.section.number - right.section.number
 	);
 
-	const cards = ordered.flatMap((input) =>
-		runFromSection(buildSectionRun(input.section, input.topics)).cards
-	);
-
-	return { kind, cards };
+	return {
+		kind,
+		cards: ordered.flatMap((input) =>
+			sectionRunCards(buildSectionRun(input.section, input.topics))
+		)
+	};
 }
 
 /**

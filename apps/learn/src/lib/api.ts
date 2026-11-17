@@ -41,35 +41,33 @@ export async function loadHomeForSession(): Promise<HomeResult> {
 	return { status: 'ready', home: (await response.json()) as HomeResponse };
 }
 
-export type SectionRunResult =
-	| { status: 'ready'; run: SectionRun }
+type LoadedRun<T> =
+	| { status: 'ready'; run: T }
 	| { status: 'empty' | 'signed-out' | 'unavailable' };
+
+export type SectionRunResult = LoadedRun<SectionRun>;
 
 /** Loads one section's cards in route order; topics without gradeable fields are absent. */
 export async function loadSectionRun(sectionNumber: number): Promise<SectionRunResult> {
-	const response = await request(`/api/sections/${sectionNumber}/cards`);
-
-	if (!response.ok) {
-		return { status: response.status === 401 ? 'signed-out' : 'unavailable' };
-	}
-
-	const run = (await response.json()) as SectionRun;
-	return run.cards.length === 0 ? { status: 'empty' } : { status: 'ready', run };
+	return loadRun<SectionRun>(`/api/sections/${sectionNumber}/cards`);
 }
 
-export type GroupRunResult =
-	| { status: 'ready'; run: Run }
-	| { status: 'empty' | 'signed-out' | 'unavailable' };
+export type GroupRunResult = LoadedRun<Run>;
 
 /** Loads Learn new (every group section) or Repeat gaps (sections with gaps). */
 export async function loadGroupRun(kind: GroupRunKind): Promise<GroupRunResult> {
-	const response = await request(`/api/runs/${kind}`);
+	return loadRun<Run>(`/api/runs/${kind}`);
+}
+
+/** Reads a run response, distinguishing an empty run from a failed load. */
+async function loadRun<T extends { cards: unknown[] }>(path: string): Promise<LoadedRun<T>> {
+	const response = await request(path);
 
 	if (!response.ok) {
 		return { status: response.status === 401 ? 'signed-out' : 'unavailable' };
 	}
 
-	const run = (await response.json()) as Run;
+	const run = (await response.json()) as T;
 	return run.cards.length === 0 ? { status: 'empty' } : { status: 'ready', run };
 }
 

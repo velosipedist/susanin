@@ -148,3 +148,15 @@ export async function signIn(
 export async function getHome(api: TestApi, cookie: string): Promise<Response> {
 	return api.app.request('/api/home', { headers: { cookie } });
 }
+
+/** Onboards one learner and returns their signed session cookie. */
+export async function cookieForLearner(
+	api: TestApi,
+	telegramId: number,
+	group: Group = 'B',
+	firstName = 'Mei'
+): Promise<string> {
+	await onboardLearner(api, { telegramId, firstName, group });
+	const { cookie } = await signIn(api, { telegramId, firstName });
+	return cookie;
+}

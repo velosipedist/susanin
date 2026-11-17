@@ -125,8 +125,8 @@ export function createApp({ db, config }: ApiContext): Hono {
 			return c.json({ error: 'unauthorized' }, 401);
 		}
 
-		const sectionNumber = Number(c.req.param('number'));
-		if (!Number.isInteger(sectionNumber) || sectionNumber < 1) {
+		const sectionNumber = routeId(c.req.param('number'));
+		if (sectionNumber === undefined) {
 			return c.json({ error: 'section-not-found' }, 404);
 		}
 
@@ -144,8 +144,8 @@ export function createApp({ db, config }: ApiContext): Hono {
 			return c.json({ error: 'unauthorized' }, 401);
 		}
 
-		const topicId = Number(c.req.param('topicId'));
-		if (!Number.isInteger(topicId) || topicId < 1) {
+		const topicId = routeId(c.req.param('topicId'));
+		if (topicId === undefined) {
 			return c.json({ error: 'topic-not-found' }, 404);
 		}
 
@@ -162,14 +162,14 @@ export function createApp({ db, config }: ApiContext): Hono {
 		});
 
 		switch (result.status) {
+			case 'ok':
+				return c.json({ ok: true });
 			case 'not-found':
 				return c.json({ error: 'topic-not-found' }, 404);
 			case 'no-fields':
 				return c.json({ error: 'no-gradeable-fields' }, 400);
 			case 'incomplete':
 				return c.json({ error: 'incomplete-card' }, 400);
-			default:
-				return c.json({ ok: true });
 		}
 	});
 
@@ -261,4 +261,10 @@ async function readJson(request: Request): Promise<unknown> {
 	} catch {
 		return null;
 	}
+}
+
+/** Parses a route id; anything that is not a positive whole number is invalid. */
+function routeId(value: string): number | undefined {
+	const parsed = Number(value);
+	return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
 }

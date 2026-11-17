@@ -34,6 +34,13 @@ type TopicFieldRow = {
 	notApplicable: boolean | null;
 };
 
+type TopicRow = TopicFieldRow & {
+	topicId: number | null;
+	position: number | null;
+	name: string | null;
+	side: string | null;
+};
+
 /** Maps a joined topic-field row to a card field, or null when the join found none. */
 function toCardFieldInput(row: TopicFieldRow): CardFieldInput | null {
 	if (!isFieldKey(row.key)) return null;
@@ -43,6 +50,26 @@ function toCardFieldInput(row: TopicFieldRow): CardFieldInput | null {
 		text: row.text ?? '',
 		notApplicable: row.notApplicable ?? false
 	};
+}
+
+/** Adds one joined row's field to its topic, creating the topic on first sight. */
+function addTopicFieldRow(byTopic: Map<number, TopicAccumulator>, row: TopicRow): void {
+	if (row.topicId === null) return;
+
+	let topic = byTopic.get(row.topicId);
+	if (!topic) {
+		topic = {
+			id: row.topicId,
+			position: row.position ?? 0,
+			name: row.name ?? '',
+			side: isSide(row.side) ? row.side : null,
+			fields: []
+		};
+		byTopic.set(row.topicId, topic);
+	}
+
+	const field = toCardFieldInput(row);
+	if (field) topic.fields.push(field);
 }
 
 /** Reads one section's route and drops every topic that has no gradeable field. */
@@ -74,22 +101,7 @@ export function loadSectionRun(
 		.all();
 
 	const byTopic = new Map<number, TopicAccumulator>();
-	for (const row of rows) {
-		let topic = byTopic.get(row.topicId);
-		if (!topic) {
-			topic = {
-				id: row.topicId,
-				position: row.position,
-				name: row.name,
-				side: isSide(row.side) ? row.side : null,
-				fields: []
-			};
-			byTopic.set(row.topicId, topic);
-		}
-
-		const field = toCardFieldInput(row);
-		if (field) topic.fields.push(field);
-	}
+	for (const row of rows) addTopicFieldRow(byTopic, row);
 
 	return buildSectionRun(section, [...byTopic.values()]);
 }
@@ -140,22 +152,7 @@ export function loadGroupRun(
 			bySection.set(row.sectionNumber, accumulator);
 		}
 
-		if (row.topicId === null) continue;
-
-		let topic = accumulator.topics.get(row.topicId);
-		if (!topic) {
-			topic = {
-				id: row.topicId,
-				position: row.position ?? 0,
-				name: row.name ?? '',
-				side: isSide(row.side) ? row.side : null,
-				fields: []
-			};
-			accumulator.topics.set(row.topicId, topic);
-		}
-
-		const field = toCardFieldInput(row);
-		if (field) topic.fields.push(field);
+		addTopicFieldRow(accumulator.topics, row);
 	}
 
 	const unlearnedByTopic = loadUnlearnedFields(db, input.accountId);

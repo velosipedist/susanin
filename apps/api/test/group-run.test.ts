@@ -4,24 +4,15 @@ import {
 	buildRun,
 	selectedSectionNumbers,
 	stepRun,
+	type GroupRunKind,
 	type Run,
 	type RunSectionInput
 } from '@susanin/shared';
 import { accounts, topics } from '../src/db/schema';
 import { writeTopicFieldStates } from '../src/store/field-states';
-import { createTestApi, onboardLearner, signIn, type TestApi } from './helpers';
+import { cookieForLearner, createTestApi, type TestApi } from './helpers';
 
-async function cookieFor(api: TestApi, telegramId: number): Promise<string> {
-	await onboardLearner(api, { telegramId, firstName: 'Mei', group: 'B' });
-	const { cookie } = await signIn(api, { telegramId, firstName: 'Mei' });
-	return cookie;
-}
-
-async function runFor(
-	api: TestApi,
-	cookie: string,
-	kind: 'learn-new' | 'repeat-gaps'
-): Promise<Run> {
+async function runFor(api: TestApi, cookie: string, kind: GroupRunKind): Promise<Run> {
 	const response = await api.app.request(`/api/runs/${kind}`, { headers: { cookie } });
 	expect(response.status).toBe(200);
 	return (await response.json()) as Run;
@@ -41,7 +32,7 @@ function topicIn(api: TestApi, sectionNumber: number, position: number) {
 describe('group runs over HTTP', () => {
 	it('walks every group section in ascending order, continuing across boundaries', async () => {
 		const api = createTestApi();
-		const cookie = await cookieFor(api, 8101);
+		const cookie = await cookieForLearner(api, 8101);
 
 		const run = await runFor(api, cookie, 'learn-new');
 
@@ -59,7 +50,7 @@ describe('group runs over HTTP', () => {
 
 	it('selects only sections with an unlearned field and walks them whole', async () => {
 		const api = createTestApi();
-		const cookie = await cookieFor(api, 8102);
+		const cookie = await cookieForLearner(api, 8102);
 		const accountId = api.db.select({ id: accounts.id }).from(accounts).get()!.id;
 
 		writeTopicFieldStates(api.db, {
@@ -98,7 +89,7 @@ describe('group runs over HTTP', () => {
 
 	it('returns an empty run when nothing has an unlearned field', async () => {
 		const api = createTestApi();
-		const cookie = await cookieFor(api, 8103);
+		const cookie = await cookieForLearner(api, 8103);
 
 		const run = await runFor(api, cookie, 'repeat-gaps');
 
@@ -112,7 +103,7 @@ describe('group runs over HTTP', () => {
 		const anonymous = await api.app.request('/api/runs/learn-new');
 		expect(anonymous.status).toBe(401);
 
-		const cookie = await cookieFor(api, 8104);
+		const cookie = await cookieForLearner(api, 8104);
 		const unknown = await api.app.request('/api/runs/single-section', { headers: { cookie } });
 		expect(unknown.status).toBe(404);
 		api.close();

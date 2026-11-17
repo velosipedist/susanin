@@ -6,17 +6,13 @@ import {
 	gradeableFields,
 	leaveAction,
 	verdictsMatchCard,
+	type FieldKey,
+	type FieldStateValue,
 	type SectionRun,
 	type Verdicts
 } from '@susanin/shared';
 import { accounts, fieldStates, topicFields, topics } from '../src/db/schema';
-import { createTestApi, getHome, onboardLearner, signIn, type TestApi } from './helpers';
-
-async function cookieFor(api: TestApi, telegramId: number): Promise<string> {
-	await onboardLearner(api, { telegramId, firstName: 'Mei', group: 'B' });
-	const { cookie } = await signIn(api, { telegramId, firstName: 'Mei' });
-	return cookie;
-}
+import { cookieForLearner, createTestApi, getHome, type TestApi } from './helpers';
 
 async function cardsFor(api: TestApi, cookie: string, section = 6) {
 	const response = await api.app.request(`/api/sections/${section}/cards`, {
@@ -39,14 +35,16 @@ async function grade(
 	});
 }
 
-function allVerdicts(keys: readonly string[], value: 'learned' | 'unlearned' = 'learned') {
-	return Object.fromEntries(keys.map((key) => [key, value])) as Verdicts;
+function allVerdicts(keys: readonly FieldKey[], value: FieldStateValue = 'learned'): Verdicts {
+	const verdicts: Verdicts = {};
+	for (const key of keys) verdicts[key] = value;
+	return verdicts;
 }
 
 describe('section cards over HTTP', () => {
 	it('returns the section topics in route order with six fields each', async () => {
 		const api = createTestApi();
-		const cookie = await cookieFor(api, 8001);
+		const cookie = await cookieForLearner(api, 8001);
 
 		const run = await cardsFor(api, cookie);
 
@@ -59,7 +57,7 @@ describe('section cards over HTTP', () => {
 
 	it('hides not-applicable and empty fields, and skips a topic with no gradeable field', async () => {
 		const api = createTestApi();
-		const cookie = await cookieFor(api, 8002);
+		const cookie = await cookieForLearner(api, 8002);
 
 		const first = api.db
 			.select()
@@ -114,11 +112,11 @@ describe('section cards over HTTP', () => {
 describe('writing a whole topic over HTTP', () => {
 	it('writes every verdict in one transaction and moves the home counts', async () => {
 		const api = createTestApi();
-		const cookie = await cookieFor(api, 8003);
+		const cookie = await cookieForLearner(api, 8003);
 
 		const run = await cardsFor(api, cookie);
 		const card = run.cards[0];
-		const verdicts = { ...allVerdicts(FIELD_KEYS), why: 'unlearned' } as Verdicts;
+		const verdicts: Verdicts = { ...allVerdicts(FIELD_KEYS), why: 'unlearned' };
 
 		const response = await grade(api, cookie, card.id, verdicts);
 		expect(response.status).toBe(200);
@@ -154,7 +152,7 @@ describe('writing a whole topic over HTTP', () => {
 
 	it('refuses a partial card and writes nothing', async () => {
 		const api = createTestApi();
-		const cookie = await cookieFor(api, 8004);
+		const cookie = await cookieForLearner(api, 8004);
 
 		const run = await cardsFor(api, cookie);
 		const card = run.cards[0];
@@ -169,7 +167,7 @@ describe('writing a whole topic over HTTP', () => {
 
 	it('refuses a verdict for a not-applicable field and keeps the old states', async () => {
 		const api = createTestApi();
-		const cookie = await cookieFor(api, 8005);
+		const cookie = await cookieForLearner(api, 8005);
 
 		const run = await cardsFor(api, cookie);
 		const card = run.cards[0];
@@ -199,7 +197,7 @@ describe('writing a whole topic over HTTP', () => {
 
 	it('returns 404 for an unknown topic and 400 when the topic has no gradeable field', async () => {
 		const api = createTestApi();
-		const cookie = await cookieFor(api, 8006);
+		const cookie = await cookieForLearner(api, 8006);
 
 		const unknown = await grade(api, cookie, 99_999, { what: 'learned' });
 		expect(unknown.status).toBe(404);

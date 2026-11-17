@@ -101,10 +101,7 @@
 		openingSection = null;
 
 		if (loaded.status === 'ready') {
-			run = runFromSection(loaded.run);
-			runFinished = false;
-			cardIndex = 0;
-			resetCard();
+			beginRun(runFromSection(loaded.run));
 			return;
 		}
 
@@ -132,10 +129,7 @@
 		startingRun = null;
 
 		if (loaded.status === 'ready') {
-			run = loaded.run;
-			runFinished = false;
-			cardIndex = 0;
-			resetCard();
+			beginRun(loaded.run);
 			return;
 		}
 
@@ -153,6 +147,13 @@
 				runError = 'That run could not be loaded. Try again in a moment.';
 				break;
 		}
+	}
+
+	function beginRun(next: Run) {
+		run = next;
+		runFinished = false;
+		cardIndex = 0;
+		resetCard();
 	}
 
 	function resetCard() {
@@ -198,21 +199,23 @@
 		saving = true;
 		runError = '';
 
-		const outcome = await saveTopicProgress(topicId, verdicts);
-		saving = false;
+		try {
+			const outcome = await saveTopicProgress(topicId, verdicts);
 
-		if (outcome === 'rejected') {
-			runError = 'That card was not complete. Grade every fact and try again.';
-			return false;
+			switch (outcome) {
+				case 'ok':
+					await refreshHome();
+					return true;
+				case 'rejected':
+					runError = 'That card was not complete. Grade every fact and try again.';
+					return false;
+				case 'unavailable':
+					runError = 'Progress could not be saved. Try again in a moment.';
+					return false;
+			}
+		} finally {
+			saving = false;
 		}
-
-		if (outcome === 'unavailable') {
-			runError = 'Progress could not be saved. Try again in a moment.';
-			return false;
-		}
-
-		await refreshHome();
-		return true;
 	}
 
 	function performLeave(action: NavAction) {
@@ -235,11 +238,8 @@
 	}
 
 	async function finishRun() {
-		run = null;
-		cardIndex = 0;
-		resetCard();
 		runFinished = true;
-		await refreshHome();
+		await closeRun();
 	}
 
 	async function closeRun() {
