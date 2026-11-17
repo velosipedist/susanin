@@ -1,0 +1,12 @@
+{
+  "name": "susanin",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Telegram Mini App for drilling the facts of a fixed Hong Kong Island coach tour.",
+  "license": "MIT",
+  "type": "module",
+  "packageManager": "pnpm@11.28.5",
+  "engines": {
+    "node": ">=22"
+  }
+}

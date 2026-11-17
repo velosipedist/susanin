@@ -1,0 +1,5 @@
+# Progress reset is chosen at save time, and resets the whole topic
+
+When an admin saves a change to a topic's name or to any of its field texts — including marking a field not applicable — the app finds the changed topics that already carry graded fields for some learner, and asks one question before saving: keep that progress, or reset it. Reset returns all six fields of those topics to Untouched for every learner. Nothing is blocked, and a topic with no graded fields never prompts. Reordering topics, changing a side, renaming a section, and adding a topic never prompt. Deleting a topic is a hard delete behind a confirm dialog.
+
+Why: the owner corrects content mainly to fix wrong facts, and a learner who memorised a wrong figure has memorised the wrong answer — but destroying other people's progress must not be silent, and a purely cosmetic edit should not force re-learning. This replaces the earlier rule that every content edit automatically reset the topic; the alternatives considered were field-level invalidation and an unconditional reset, both rejected as too blunt to be the only behaviour.

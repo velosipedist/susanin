@@ -1,0 +1,25 @@
+# OS noise
+.DS_Store
+
+# Source documents — HKTB copyrighted, not for redistribution
+*.pdf
+
+# Scratch work and agent logs
+.scratch/
+.sandcastle/logs/
+
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build output
+dist/
+build/
+.svelte-kit/
+*.tsbuildinfo
+
+# Logs and local env
+pnpm-debug.log*
+.env
+.env.*
+!.env.example
